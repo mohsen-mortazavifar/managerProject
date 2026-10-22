@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Activity, ArrowRight, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 
@@ -10,6 +10,7 @@ export default function HealthPage() {
   const router = useRouter();
   const [result, setResult] = useState<HealthResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, startRefresh] = useTransition();
 
   const refresh = useCallback(async () => {
     try {
@@ -23,14 +24,36 @@ export default function HealthPage() {
     }
   }, []);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const response = await fetch("/api/health", { cache: "no-store", signal: controller.signal });
+        const data = await response.json();
+        if (!controller.signal.aborted) {
+          startRefresh(() => {
+            setResult(data);
+            setLoading(false);
+          });
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          startRefresh(() => {
+            setResult({ status: "degraded", database: "unavailable" });
+            setLoading(false);
+          });
+        }
+      }
+    })();
+    return () => controller.abort();
+  }, []);
 
   return (
     <main className="tenant-page" dir="rtl">
       <header className="tenant-topbar">
         <button className="tenant-back" onClick={() => router.push("/")}><ArrowRight size={17} /> داشبورد</button>
         <div className="tenant-brand"><span>RM</span><strong>سلامت سامانه</strong></div>
-        <button className="tenant-refresh" onClick={() => void refresh()} disabled={loading}><RefreshCw size={16} /> بررسی مجدد</button>
+        <button className="tenant-refresh" onClick={() => void refresh()} disabled={loading || isRefreshing}><RefreshCw size={16} /> بررسی مجدد</button>
       </header>
       <section className="tenant-content">
         <div className="tenant-heading">
