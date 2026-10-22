@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
+import { getSqlPool, sql } from "@/lib/db";
 import { getBearerUser, type JwtUser } from "@/lib/auth/jwt";
 
 export type AuthGuardResult =
   | { ok: true; user: JwtUser }
   | { ok: false; response: NextResponse };
 
-export function requireAuth(request: Request): AuthGuardResult {
-  const user = getBearerUser(request);
-  if (!user) {
+export async function requireAuth(request: Request): Promise<AuthGuardResult> {
+  const tokenUser = getBearerUser(request);
+  if (!tokenUser) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -17,11 +18,51 @@ export function requireAuth(request: Request): AuthGuardResult {
     };
   }
 
-  return { ok: true, user };
+  try {
+    // Re-check the account on every protected request so disabled/deleted users
+    // do not retain access until the JWT expires.
+    const pool = await getSqlPool();
+    const result = await pool.request()
+      .input("userId", sql.BigInt, tokenUser.userId)
+      .query(`
+        SELECT TOP (1) UserId, Email, FullName, IsSystemAdmin
+        FROM dbo.Users
+        WHERE UserId = @userId AND IsActive = 1 AND DeletedAt IS NULL;
+      `);
+
+    const user = result.recordset[0];
+    if (!user) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "حساب کاربری غیرفعال است یا دسترسی ندارد." },
+          { status: 401, headers: { "Cache-Control": "no-store" } },
+        ),
+      };
+    }
+
+    return {
+      ok: true,
+      user: {
+        userId: String(user.UserId),
+        email: String(user.Email),
+        fullName: String(user.FullName),
+        isSystemAdmin: Boolean(user.IsSystemAdmin),
+      },
+    };
+  } catch {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "بررسی دسترسی موقتاً در دسترس نیست." },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
+      ),
+    };
+  }
 }
 
-export function requireSystemAdmin(request: Request): AuthGuardResult {
-  const result = requireAuth(request);
+export async function requireSystemAdmin(request: Request): Promise<AuthGuardResult> {
+  const result = await requireAuth(request);
   if (!result.ok) return result;
 
   if (!result.user.isSystemAdmin) {
