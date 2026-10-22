@@ -3,10 +3,16 @@ import {
   randomBytes,
   scrypt as scryptCallback,
   timingSafeEqual,
+  type ScryptOptions,
 } from "node:crypto";
 import { promisify } from "node:util";
 
-const scrypt = promisify(scryptCallback);
+const scrypt = promisify(scryptCallback) as (
+  password: string | Buffer,
+  salt: string | Buffer,
+  keylen: number,
+  options: ScryptOptions,
+) => Promise<Buffer>;
 
 function safeEqual(left: Buffer, right: Buffer): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
@@ -29,9 +35,9 @@ export async function hashPassword(password: string): Promise<string> {
   const N = 16384;
   const r = 8;
   const p = 1;
-  const derived = (await scrypt(password, salt, 64, {
+  const derived = await scrypt(password, salt, 64, {
     N, r, p, maxmem: 128 * N * r + 1024 * 1024,
-  })) as Buffer;
+  });
 
   return `$scrypt$${N}$${r}$${p}$${salt.toString("base64url")}$${derived.toString("base64url")}`;
 }
@@ -62,9 +68,9 @@ export async function verifyPassword(password: string, encodedHash: string): Pro
         expected.length < 32 || expected.length > 64
       ) return false;
 
-      const actual = (await scrypt(password, salt, expected.length, {
+      const actual = await scrypt(password, salt, expected.length, {
         N, r, p, maxmem: 128 * N * r + 1024 * 1024,
-      })) as Buffer;
+      });
       return safeEqual(actual, expected);
     }
 
