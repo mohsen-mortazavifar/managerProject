@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Activity,
   ArrowDownLeft,
@@ -58,6 +59,7 @@ const workItems = [
 ];
 
 export default function Home() {
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -92,11 +94,9 @@ export default function Home() {
                 className={`nav-item ${item.active ? "nav-item-active" : ""}`}
                 key={item.label}
                 onClick={() => {
-                  if (!item.active) {
-                    setSearch(item.label);
-                  } else {
-                    setSearch("");
-                  }
+                  if (item.label === "کسب‌وکارها") { router.push("/tenants"); setMenuOpen(false); return; }
+                  if (item.label === "سلامت سامانه") { router.push("/health"); setMenuOpen(false); return; }
+                  if (!item.active) { setSearch(item.label); } else { setSearch(""); }
                   setMenuOpen(false);
                 }}
                 type="button"
