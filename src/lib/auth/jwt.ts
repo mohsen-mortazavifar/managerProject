@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 const JWT_ISSUER = "repair-master";
 const JWT_AUDIENCE = "repair-master-api";
@@ -100,12 +100,19 @@ export function verifyAccessToken(token: string): JwtUser | null {
   }
 }
 
-export function getBearerUser(request: Request): JwtUser | null {
+export function getBearerToken(request: Request): string | null {
   const authorization = request.headers.get("authorization");
   if (!authorization) return null;
 
   const match = authorization.match(/^Bearer ([A-Za-z0-9_.-]+)$/i);
-  if (!match) return null;
+  return match ? match[1] : null;
+}
 
-  return verifyAccessToken(match[1]);
+export function hashAccessToken(token: string): Buffer {
+  return createHash("sha256").update(token, "utf8").digest();
+}
+
+export function getBearerUser(request: Request): JwtUser | null {
+  const token = getBearerToken(request);
+  return token ? verifyAccessToken(token) : null;
 }
