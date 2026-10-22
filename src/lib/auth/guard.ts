@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { getSqlPool, sql } from "@/lib/db";
-import { getBearerUser, type JwtUser } from "@/lib/auth/jwt";
+import { getBearerToken, getBearerUser, hashAccessToken, type JwtUser } from "@/lib/auth/jwt";
 
 export type AuthGuardResult =
   | { ok: true; user: JwtUser }
   | { ok: false; response: NextResponse };
 
 export async function requireAuth(request: Request): Promise<AuthGuardResult> {
-  const tokenUser = getBearerUser(request);
+  const bearerToken = getBearerToken(request);
+  const tokenUser = bearerToken ? getBearerUser(request) : null;
   if (!tokenUser) {
     return {
       ok: false,
@@ -22,6 +23,25 @@ export async function requireAuth(request: Request): Promise<AuthGuardResult> {
     // Re-check the account on every protected request so disabled/deleted users
     // do not retain access until the JWT expires.
     const pool = await getSqlPool();
+    const tokenHash = hashAccessToken(bearerToken!);
+    const revoked = await pool.request()
+      .input("tokenHash", sql.VarBinary(32), tokenHash)
+      .query(`
+        SELECT TOP (1) TokenHash
+        FROM dbo.RevokedAccessTokens
+        WHERE TokenHash = @tokenHash AND ExpiresAt > SYSUTCDATETIME();
+      `);
+
+    if (revoked.recordset.length > 0) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "توکن باطل شده است. دوباره وارد شوید." },
+          { status: 401, headers: { "Cache-Control": "no-store" } },
+        ),
+      };
+    }
+
     const result = await pool.request()
       .input("userId", sql.BigInt, tokenUser.userId)
       .query(`
