@@ -1,12 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSqlPool, sql } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth/password";
-import {
-  createSessionToken,
-  persistSession,
-  SESSION_COOKIE_NAME,
-  SESSION_TTL_SECONDS,
-} from "@/lib/auth/session";
+import { createAccessToken, JWT_TTL_SECONDS } from "@/lib/auth/jwt";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,36 +53,29 @@ export async function POST(request: Request) {
       );
     }
 
-    const token = createSessionToken();
-    await persistSession(token, user.UserId as string | number, request);
+    const publicUser = {
+      userId: String(user.UserId),
+      email: String(user.Email),
+      fullName: String(user.FullName),
+      isSystemAdmin: Boolean(user.IsSystemAdmin),
+    };
+
+    const accessToken = createAccessToken(publicUser);
 
     await pool.request()
       .input("userId", sql.BigInt, user.UserId)
       .query("UPDATE dbo.Users SET LastLoginAt = SYSUTCDATETIME() WHERE UserId = @userId;");
 
     const response = NextResponse.json({
-      user: {
-        userId: String(user.UserId),
-        email: String(user.Email),
-        fullName: String(user.FullName),
-        isSystemAdmin: Boolean(user.IsSystemAdmin),
-      },
+      tokenType: "Bearer",
+      accessToken,
+      expiresIn: JWT_TTL_SECONDS,
+      user: publicUser,
     });
-
-    response.cookies.set({
-      name: SESSION_COOKIE_NAME,
-      value: token,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: SESSION_TTL_SECONDS,
-    });
-
     response.headers.set("Cache-Control", "no-store");
+    response.headers.set("Pragma", "no-cache");
     return response;
   } catch {
-    // Do not disclose SQL errors, schema names, or configuration to clients.
     return NextResponse.json(
       { error: "ورود موقتاً در دسترس نیست. تنظیمات سرور را بررسی کنید." },
       { status: 503 },
