@@ -33,7 +33,7 @@ export async function hashPassword(password: string): Promise<string> {
     N, r, p, maxmem: 128 * N * r + 1024 * 1024,
   })) as Buffer;
 
-  return `$scrypt${N}${r}${p}${salt.toString("base64url")}${derived.toString("base64url")}`;
+  return `$scrypt$${N}$${r}$${p}$${salt.toString("base64url")}$${derived.toString("base64url")}`;
 }
 
 /**
