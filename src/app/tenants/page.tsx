@@ -70,9 +70,18 @@ export default function TenantsPage() {
     finally { setSaving(false); }
   }
 
-  function logout() {
-    sessionStorage.removeItem("repairMasterAccessToken");
-    router.replace("/login");
+  async function logout() {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+    } finally {
+      // Clear local credentials even if the network or server is unavailable.
+      sessionStorage.removeItem("repairMasterAccessToken");
+      router.replace("/login");
+    }
   }
 
   return (
