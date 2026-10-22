@@ -12,6 +12,9 @@
 - [x] HS256 signature validation, issuer/audience checks, 15-minute expiry, and `JWT_SECRET` environment configuration.
 - [x] Password hash creation using scrypt and verification for this format plus ASP.NET Core Identity V2/V3 formats.
 - [x] JWT configuration and API examples in `docs/authentication.md`.
+- [x] Administrator login page at `/login` and tenant management page at `/tenants`.
+- [x] Tenant list/search/create APIs and tenant detail/update APIs, protected by system-admin authorization.
+- [x] Database health status page at `/health` and dashboard navigation links.
 - [ ] Configure a strong `JWT_SECRET` in the deployment environment.
 - [ ] Confirm the existing `Users.PasswordHash` encoding is compatible with the verifier.
 - [x] Add SQL-backed login rate limiting: 8 failed attempts per email or 30 per client IP in a rolling 15-minute window.
@@ -19,7 +22,7 @@
 - [ ] Configure the trusted reverse proxy to overwrite client IP headers and schedule retention cleanup for login-attempt records.
 - [ ] Review the primary-key and foreign-key result sets from the constraints audit.
 - [ ] Build and integration-test against the target SQL Server, including HTTP 401/429/503 behavior.
-- [ ] Add refresh-token rotation/revocation if needed, password reset, registration, and tenant-level authorization.
+- [ ] Add refresh-token rotation/revocation if needed, password reset, registration, tenant-level authorization, and the remaining management modules.
 
 ## JWT usage
 
