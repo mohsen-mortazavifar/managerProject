@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isIP } from "node:net";
 import { getSqlPool, sql } from "@/lib/db";
 
 const WINDOW_MINUTES = 15;
@@ -14,12 +15,14 @@ function digest(value: string): Buffer {
 }
 
 export function getLoginClientIp(request: Request): string | null {
-  // Prefer a proxy-supplied address. Only trust these headers when the
-  // deployment's reverse proxy overwrites them rather than passing client input.
+  // Forwarding headers are attacker-controlled unless a trusted reverse proxy
+  // overwrites them. Opt in only when the deployment guarantees that behavior.
+  if (process.env.TRUST_PROXY_HEADERS !== "true") return null;
+
   const realIp = request.headers.get("x-real-ip")?.trim();
   const forwardedIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   const value = realIp || forwardedIp || "";
-  return value && value.length <= 128 ? value : null;
+  return value && value.length <= 128 && isIP(value) !== 0 ? value : null;
 }
 
 export async function checkLoginRateLimit(
