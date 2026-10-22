@@ -5,7 +5,6 @@ const JWT_AUDIENCE = "repair-master-api";
 export const JWT_TTL_SECONDS = 15 * 60;
 
 export type JwtUser = {
-  sub: string;
   userId: string;
   email: string;
   fullName: string;
@@ -13,6 +12,7 @@ export type JwtUser = {
 };
 
 type JwtPayload = JwtUser & {
+  sub: string;
   iss: string;
   aud: string;
   iat: number;
