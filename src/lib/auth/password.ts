@@ -1,5 +1,6 @@
 import {
   pbkdf2Sync,
+  randomBytes,
   scrypt as scryptCallback,
   timingSafeEqual,
 } from "node:crypto";
@@ -13,6 +14,26 @@ function safeEqual(left: Buffer, right: Buffer): boolean {
 
 function decodeBase64Url(value: string): Buffer {
   return Buffer.from(value.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+}
+
+/**
+ * Creates new password hashes for accounts created by this application.
+ * Existing ASP.NET Core Identity V2/V3 hashes are also supported below.
+ */
+export async function hashPassword(password: string): Promise<string> {
+  if (password.length < 12 || password.length > 1024) {
+    throw new Error("Password must be between 12 and 1024 characters.");
+  }
+
+  const salt = randomBytes(16);
+  const N = 16384;
+  const r = 8;
+  const p = 1;
+  const derived = (await scrypt(password, salt, 64, {
+    N, r, p, maxmem: 128 * N * r + 1024 * 1024,
+  })) as Buffer;
+
+  return `$scrypt${N}${r}${p}${salt.toString("base64url")}${derived.toString("base64url")}`;
 }
 
 /**
