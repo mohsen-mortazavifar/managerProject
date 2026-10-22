@@ -14,9 +14,11 @@
 - [x] JWT configuration and API examples in `docs/authentication.md`.
 - [ ] Configure a strong `JWT_SECRET` in the deployment environment.
 - [ ] Confirm the existing `Users.PasswordHash` encoding is compatible with the verifier.
-- [ ] Add shared persistent login rate limiting/lockout before public production exposure.
+- [x] Add SQL-backed login rate limiting: 8 failed attempts per email or 30 per client IP in a rolling 15-minute window.
+- [ ] Review and manually run `docs/create-auth-login-attempts.sql` before enabling login in the target environment.
+- [ ] Configure the trusted reverse proxy to overwrite client IP headers and schedule retention cleanup for login-attempt records.
 - [ ] Review the primary-key and foreign-key result sets from the constraints audit.
-- [ ] Build and integration-test against the target SQL Server.
+- [ ] Build and integration-test against the target SQL Server, including HTTP 401/429/503 behavior.
 - [ ] Add refresh-token rotation/revocation if needed, password reset, registration, and tenant-level authorization.
 
 ## JWT usage
