@@ -2,6 +2,7 @@ import sql from "mssql";
 import { randomBytes, scrypt as scryptCallback } from "node:crypto";
 import { promisify } from "node:util";
 import { createInterface } from "node:readline/promises";
+import { emitKeypressEvents } from "node:readline";
 
 const scrypt = promisify(scryptCallback);
 const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -49,8 +50,7 @@ async function askSecret(label) {
     };
 
     // Keypress events preserve Unicode characters, including Persian passwords.
-    const readline = await import("node:readline");
-    readline.emitKeypressEvents(process.stdin);
+    emitKeypressEvents(process.stdin);
     process.stdin.on("keypress", onKeypress);
   });
 }
