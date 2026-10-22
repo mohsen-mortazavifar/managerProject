@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "bootstrap:admin": "node --env-file=.env.local scripts/create-admin.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.61.0",
