@@ -111,7 +111,7 @@ export async function POST(request: Request) {
     }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const sqlError = error as { number?: number; code?: string };
-    if (sqlError.number === 2627 || sqlError.number === 2601 || sqlError.code === "EREQUEST") {
+    if (sqlError.number === 2627 || sqlError.number === 2601) {
       return NextResponse.json(
         { error: "ثبت کسب‌وکار انجام نشد؛ احتمالاً کد تکراری است یا محدودیت دیتابیس نقض شده است." },
         { status: 409, headers: { "Cache-Control": "no-store" } },
