@@ -153,7 +153,7 @@ export default function Home() {
               />
               <kbd>/</kbd>
             </label>
-            <div className="admin-avatar" title="مدیر پلتفرم">م</div>
+            <button className="admin-avatar" title="ورود مدیر سامانه" aria-label="ورود مدیر سامانه" onClick={() => router.push("/login")}>م</button>
           </div>
         </header>
 
@@ -192,7 +192,7 @@ export default function Home() {
               {filteredItems.map((item, index) => {
                 const Icon = item.icon;
                 return (
-                  <article className="module-card" key={item.title}>
+                  <article className="module-card" key={item.title} onClick={item.title === "مدیریت کسب‌وکارها" ? () => router.push("/tenants") : undefined} role={item.title === "مدیریت کسب‌وکارها" ? "link" : undefined} tabIndex={item.title === "مدیریت کسب‌وکارها" ? 0 : undefined} onKeyDown={item.title === "مدیریت کسب‌وکارها" ? (event) => { if (event.key === "Enter" || event.key === " ") router.push("/tenants"); } : undefined}>
                     <div className="module-card-top">
                       <div className={`module-icon module-icon-${index % 4}`}><Icon size={21} strokeWidth={1.8} /></div>
                       <span className="module-arrow"><ArrowUpLeft size={17} /></span>
@@ -237,7 +237,7 @@ export default function Home() {
               </div>
               <ol className="steps-list">
                 <li><span>۱</span><div><strong>تأیید قرارداد دیتابیس</strong><p>هماهنگ‌سازی مستندات و جداول موجود</p></div></li>
-                <li><span>۲</span><div><strong>احراز هویت و نشست امن</strong><p>ورود، خروج و کنترل دسترسی سمت سرور</p></div></li>
+                <li><span>۲</span><div><strong>احراز هویت JWT</strong><p>ورود، خروج و کنترل دسترسی سمت سرور</p></div></li>
                 <li><span>۳</span><div><strong>ثبت‌نام و Provisioning</strong><p>صف پایدار و Worker مستقل</p></div></li>
               </ol>
             </article>
