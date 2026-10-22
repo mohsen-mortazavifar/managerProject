@@ -19,34 +19,39 @@ async function askSecret(label) {
   return await new Promise((resolve, reject) => {
     let value = "";
     process.stdout.write(label);
-    const onData = (buffer) => {
-      for (const byte of buffer) {
-        if (byte === 3) {
-          cleanup();
-          reject(new Error("عملیات لغو شد."));
-          return;
-        }
-        if (byte === 13 || byte === 10) {
-          process.stdout.write("\n");
-          cleanup();
-          resolve(value);
-          return;
-        }
-        if (byte === 8 || byte === 127) {
-          value = value.slice(0, -1);
-        } else if (byte >= 32) {
-          value += String.fromCharCode(byte);
-        }
+    process.stdin.setEncoding("utf8");
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+
+    const onKeypress = (character, key = {}) => {
+      if (key.ctrl && key.name === "c") {
+        cleanup();
+        reject(new Error("عملیات لغو شد."));
+        return;
       }
+      if (key.name === "return" || key.name === "enter") {
+        process.stdout.write("\\n");
+        cleanup();
+        resolve(value);
+        return;
+      }
+      if (key.name === "backspace" || key.name === "delete") {
+        value = Array.from(value).slice(0, -1).join("");
+        return;
+      }
+      if (character && !key.ctrl && !key.meta) value += character;
     };
+
     const cleanup = () => {
-      process.stdin.off("data", onData);
+      process.stdin.off("keypress", onKeypress);
       process.stdin.setRawMode(false);
       process.stdin.pause();
     };
-    process.stdin.setRawMode(true);
-    process.stdin.resume();
-    process.stdin.on("data", onData);
+
+    // Keypress events preserve Unicode characters, including Persian passwords.
+    const readline = await import("node:readline");
+    readline.emitKeypressEvents(process.stdin);
+    process.stdin.on("keypress", onKeypress);
   });
 }
 
