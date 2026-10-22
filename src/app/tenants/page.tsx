@@ -14,7 +14,7 @@ const statusLabels: Record<string, string> = {
 
 export default function TenantsPage() {
   const router = useRouter();
-  const [token, setToken] = useState("");
+  const [token] = useState(() => typeof window === "undefined" ? "" : sessionStorage.getItem("repairMasterAccessToken") ?? "");
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
@@ -24,14 +24,10 @@ export default function TenantsPage() {
   const [form, setForm] = useState({ name: "", code: "", contactEmail: "", contactMobile: "" });
 
   useEffect(() => {
-    const stored = sessionStorage.getItem("repairMasterAccessToken");
-    if (!stored) { router.replace("/login"); return; }
-    setToken(stored);
-  }, [router]);
+    if (!token) router.replace("/login");
+  }, [router, token]);
 
   const loadTenants = useCallback(async (accessToken: string, query: string) => {
-    setLoading(true);
-    setError("");
     try {
       const response = await fetch(`/api/tenants?search=${encodeURIComponent(query)}`, {
         headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store",
@@ -94,8 +90,8 @@ export default function TenantsPage() {
         </div>
 
         <div className="tenant-toolbar">
-          <label className="tenant-search"><Search size={17} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="جستجو بر اساس نام، کد یا ایمیل" /></label>
-          <button className="tenant-refresh" onClick={() => token && void loadTenants(token, search)} disabled={loading}><RefreshCw size={16} /> بروزرسانی</button>
+          <label className="tenant-search"><Search size={17} /><input value={search} onChange={(e) => { setLoading(true); setSearch(e.target.value); }} placeholder="جستجو بر اساس نام، کد یا ایمیل" /></label>
+          <button className="tenant-refresh" onClick={() => { if (token) { setLoading(true); void loadTenants(token, search); } }} disabled={loading}><RefreshCw size={16} /> بروزرسانی</button>
           <span className="tenant-count">{tenants.length} مورد</span>
         </div>
 
