@@ -2,33 +2,36 @@
 
 ## Phase 1 — application foundation
 
-- [x] Add a shared SQL Server connection pool using the existing `mssql` dependency.
-- [x] Read database settings from environment variables; do not store credentials in source control.
-- [x] Add `GET /api/health` to check connectivity to the central database without returning sensitive error details.
-- [x] Add a read-only table/column preflight script at `docs/validate-schema.sql`.
-- [x] Record the user's reported preflight result: 11/11 expected tables and 92/92 expected columns were found.
-- [x] Add a read-only primary-key, foreign-key, and identity uniqueness audit at `docs/audit-schema-constraints.sql`.
-- [x] Record the user's reported uniqueness results: unique indexes were found for `Tenants.Code` and `Users.Email`.
+- [x] Shared SQL Server connection pool and environment-based configuration.
+- [x] `GET /api/health` for central database connectivity.
+- [x] Read-only table/column preflight at `docs/validate-schema.sql`; user reported 11/11 tables and 92/92 columns found.
+- [x] Read-only constraint audit at `docs/audit-schema-constraints.sql`; user reported unique indexes for `Users.Email` and `Tenants.Code`.
+- [x] Email/password login endpoint: `POST /api/auth/login`.
+- [x] Current-session endpoint: `GET /api/auth/me`.
+- [x] Logout and server-side session revocation: `POST /api/auth/logout`.
+- [x] Opaque random session tokens, SHA-256 token digests in SQL Server, seven-day expiry, HttpOnly cookie, SameSite=Lax, and Secure cookie in production.
+- [x] Password hash creation using scrypt and verification for this format plus ASP.NET Core Identity V2/V3 formats.
+- [x] Manual SQL script to create `dbo.UserSessions`: `docs/create-user-sessions.sql`.
+- [x] Setup and security notes: `docs/authentication.md`.
+- [ ] Run `docs/create-user-sessions.sql` manually against the central database.
+- [ ] Confirm the existing `Users.PasswordHash` encoding is compatible with the verifier.
+- [ ] Add shared persistent login rate limiting/lockout before public production exposure.
 - [ ] Review the primary-key and foreign-key result sets from the constraints audit.
-- [ ] Verify column types, nullability, defaults, and foreign-key definitions against the intended schema.
-- [ ] Add and verify migrations only after schema and constraints are confirmed.
-- [ ] Implement authentication and secure sessions.
-- [ ] Implement tenant registration and durable provisioning jobs.
-- [ ] Add platform administration UI and role-based authorization.
+- [ ] Build and integration-test against the target SQL Server.
+- [ ] Add password reset, registration, and tenant-level authorization.
 
-## Validation procedure
+## Authentication rollout
 
-1. Select the intended central database in SQL Server Management Studio (SSMS).
-2. Run `docs/validate-schema.sql`. The user reported 11 expected tables, 11 found tables, 92 expected columns, and 92 found columns.
-3. Run `docs/audit-schema-constraints.sql`. The user reported unique indexes for `Users.Email` and `Tenants.Code`. Review the first result set for missing primary keys and the second for missing expected foreign-key relationships.
-4. Confirm the results before implementing authentication or schema migrations.
+1. Review and manually run `docs/create-user-sessions.sql` in the central database. The application does not run migrations automatically.
+2. Configure the existing SQL environment variables in the deployment environment; never commit credentials.
+3. Test `POST /api/auth/login`, `GET /api/auth/me`, and `POST /api/auth/logout` using a non-production test account.
+4. Existing password hashes must be in the application's `$scrypt$...` format or ASP.NET Core Identity V2/V3 format. Unknown formats fail closed; do not change stored hashes without a planned migration/reset.
+5. Add shared, persistent login rate limiting before exposing login publicly.
 
-Both SQL scripts are read-only: they query SQL Server catalog metadata and do not create, alter, or delete database objects.
+## Security and verification notes
 
-## Important schema note
+The session cookie is HttpOnly, SameSite=Lax, and Secure when `NODE_ENV=production`. Only the token digest is stored in the database. Inactive or soft-deleted users cannot authenticate through an existing session, and logout revokes the server-side session.
 
-The supplied database definitions and a previously referenced PDF implementation specification do not fully match. For example, the supplied schema uses `Roles`, `UserRoles`, and `TenantDatabases.ConnectionStringEncrypted`, while the PDF describes a different set of identity, role, and database-reference tables. Confirm the source of truth before generating migrations or implementing features that depend on those differences.
+The user reported that 11 expected tables and 92 expected columns exist, and that unique indexes exist for `Users.Email` and `Tenants.Code`. Primary-key and foreign-key audit results have not yet been supplied.
 
-## Verification status
-
-The user-reported table/column counts match the expected names. The uniqueness result set reports unique indexes for `Users.Email` and `Tenants.Code`. The primary-key and foreign-key result sets, database connectivity, exact data types, nullability, defaults, and constraint definitions remain unverified.
+These repository changes have been committed to `manager-agent1`, but the project has not been built or tested against the user's SQL Server from this environment. Session login will return a service-unavailable response until the session table exists and valid database settings are configured.
