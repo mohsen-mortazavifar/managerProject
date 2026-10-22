@@ -32,10 +32,12 @@ export async function POST(request: Request) {
   }
 
   const normalizedEmail = email.trim().toLowerCase();
-  if (!normalizedEmail || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(normalizedEmail)) {
-    return NextResponse.json({ error: "ایمیل یا رمز عبور نامعتبر است." }, { status: 400 });
+  if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    return NextResponse.json(
+      { error: "ایمیل یا رمز عبور نامعتبر است." },
+      { status: 400 }
+    );
   }
-
   const clientIp = getLoginClientIp(request);
 
   try {
