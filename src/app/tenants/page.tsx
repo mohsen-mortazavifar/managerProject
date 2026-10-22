@@ -44,7 +44,50 @@ export default function TenantsPage() {
     finally { setLoading(false); }
   }, [router]);
 
-  useEffect(() => { if (token) void loadTenants(token, search); }, [token, search, loadTenants]);
+  useEffect(() => {
+    if (!token) return;
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    async function fetchTenants() {
+      try {
+        const response = await fetch(`/api/tenants?search=${encodeURIComponent(search)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const result = await response.json();
+        if (cancelled) return;
+
+        if (response.status === 401 || response.status === 403) {
+          sessionStorage.removeItem("repairMasterAccessToken");
+          router.replace("/login");
+          return;
+        }
+        if (!response.ok) {
+          setError(result.error || "دریافت فهرست ناموفق بود.");
+          setLoading(false);
+          return;
+        }
+
+        setTenants(result.tenants);
+        setError("");
+        setLoading(false);
+      } catch {
+        if (!cancelled) {
+          setError("ارتباط با سرور برقرار نشد.");
+          setLoading(false);
+        }
+      }
+    }
+
+    void fetchTenants();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [token, search, router]);
 
   async function createTenant(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
