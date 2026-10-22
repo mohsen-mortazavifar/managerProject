@@ -16,6 +16,29 @@ openssl rand -base64 48
 
 Do not commit the real secret to Git. If the secret is missing or too short, token creation fails closed and login returns a service-unavailable response.
 
+## Login rate limiting
+
+Before enabling the updated login endpoint, review and manually run
+`docs/create-auth-login-attempts.sql` against the application database. It
+creates the `dbo.AuthLoginAttempts` table and its supporting indexes; no database
+migration is run automatically by the application.
+
+The login endpoint counts failed attempts over a rolling 15-minute window and
+returns HTTP 429 with a `Retry-After` header after 8 failures for one normalized
+email address or 30 failures from one client IP. Email and IP values are stored
+as SHA-256 hashes; user-agent values are truncated. Successful attempts are
+recorded but excluded from failure counts.
+
+The app reads `x-real-ip` or the first `x-forwarded-for` value. Configure your
+trusted reverse proxy to overwrite these headers. Do not trust client-supplied
+forwarding headers when the application is directly internet-accessible. If
+the rate-limit table is missing or SQL Server is unavailable, login fails closed
+with HTTP 503 until the configuration issue is fixed.
+
+The table will accumulate records over time. Schedule a reviewed retention job
+to delete old records (for example, records older than 30 days) and monitor its
+size before production deployment.
+
 ## Token policy
 
 - Algorithm: HS256 (HMAC-SHA256), explicitly checked during verification.
