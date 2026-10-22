@@ -97,7 +97,7 @@ a { color: inherit; text-decoration: none; }
 .section-heading p, .panel-title-row p { margin: 5px 0 0; color: #8a95a8; font-size: 11px; }
 .section-count { padding: 6px 9px; border-radius: 7px; background: #edf1ff; color: #5872d7; font-size: 10px; }
 .module-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-.module-card { display: flex; flex-direction: column; min-height: 222px; padding: 17px 16px 13px; border: 1px solid #e8ecf3; border-radius: 12px; background: #fff; transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+.module-card { cursor: pointer; display: flex; flex-direction: column; min-height: 222px; padding: 17px 16px 13px; border: 1px solid #e8ecf3; border-radius: 12px; background: #fff; transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
 .module-card:hover { transform: translateY(-2px); border-color: #dce4ff; box-shadow: 0 12px 30px #293e740b; }
 .module-card-top { display: flex; align-items: center; justify-content: space-between; }
 .module-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; }
