@@ -12,7 +12,6 @@ export default function HealthPage() {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
     try {
       const response = await fetch("/api/health", { cache: "no-store" });
       const data = await response.json();
