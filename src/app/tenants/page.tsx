@@ -77,6 +77,8 @@ export default function TenantsPage() {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       });
+    } catch {
+      // Local logout must still complete when the server cannot be reached.
     } finally {
       // Clear local credentials even if the network or server is unavailable.
       sessionStorage.removeItem("repairMasterAccessToken");
