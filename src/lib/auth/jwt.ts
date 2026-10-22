@@ -5,6 +5,7 @@ const JWT_AUDIENCE = "repair-master-api";
 export const JWT_TTL_SECONDS = 15 * 60;
 
 export type JwtUser = {
+  sub: string;
   userId: string;
   email: string;
   fullName: string;
@@ -39,6 +40,7 @@ export function createAccessToken(user: JwtUser): string {
   const header = encode({ alg: "HS256", typ: "JWT" });
   const payload: JwtPayload = {
     ...user,
+    sub: user.userId,
     iss: JWT_ISSUER,
     aud: JWT_AUDIENCE,
     iat: now,
@@ -75,7 +77,7 @@ export function verifyAccessToken(token: string): JwtUser | null {
     if (
       payload.iss !== JWT_ISSUER ||
       payload.aud !== JWT_AUDIENCE ||
-      typeof payload.sub === "string" ||
+      payload.sub !== payload.userId ||
       typeof payload.exp !== "number" ||
       typeof payload.iat !== "number" ||
       payload.exp <= now ||
