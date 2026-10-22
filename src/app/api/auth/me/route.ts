@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { getAuthenticatedUser } from "@/lib/auth/session";
+import { getBearerUser } from "@/lib/auth/jwt";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const user = await getAuthenticatedUser(request);
+  const user = getBearerUser(request);
   if (!user) {
-    return NextResponse.json({ error: "نیاز به ورود دارید." }, {
+    return NextResponse.json({ error: "توکن معتبر نیست یا منقضی شده است." }, {
       status: 401,
       headers: { "Cache-Control": "no-store" },
     });
