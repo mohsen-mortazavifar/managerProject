@@ -1,5 +1,5 @@
 import sql from "mssql";
-import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
+import { randomBytes, scrypt as scryptCallback } from "node:crypto";
 import { promisify } from "node:util";
 import { createInterface } from "node:readline/promises";
 
@@ -62,6 +62,7 @@ async function hashPassword(password) {
 async function main() {
   const email = (await ask("ایمیل مدیر: ")).toLowerCase();
   const fullName = await ask("نام کامل مدیر: ");
+  rl.close();
   const password = await askSecret("رمز عبور (حداقل ۱۲ کاراکتر؛ هنگام تایپ نمایش داده نمی‌شود): ");
   const confirmation = await askSecret("تکرار رمز عبور: ");
 
