@@ -4,7 +4,7 @@
 
 - `POST /api/auth/login`: accepts JSON `{ "email": "...", "password": "..." }` and returns a signed access token and public user details.
 - `GET /api/auth/me`: validates the JWT from the `Authorization: Bearer <token>` header and returns the authenticated user.
-- `POST /api/auth/logout`: returns a consistent logout response. Because access JWTs are stateless, the client must discard its token; this endpoint does not revoke a previously issued token.
+- `POST /api/auth/logout`: requires the current Bearer token and records its SHA-256 hash in `dbo.RevokedAccessTokens`. Subsequent protected requests reject that token. The client clears its local token even if the network is unavailable; if the server cannot revoke it, the token remains valid until expiry.
 
 ## Configuration
 
@@ -29,11 +29,7 @@ email address or 30 failures from one client IP. Email and IP values are stored
 as SHA-256 hashes; user-agent values are truncated. Successful attempts are
 recorded but excluded from failure counts.
 
-The app reads `x-real-ip` or the first `x-forwarded-for` value. Configure your
-trusted reverse proxy to overwrite these headers. Do not trust client-supplied
-forwarding headers when the application is directly internet-accessible. If
-the rate-limit table is missing or SQL Server is unavailable, login fails closed
-with HTTP 503 until the configuration issue is fixed.
+The app reads `x-real-ip` or the first `x-forwarded-for` value only when `TRUST_PROXY_HEADERS=true`; it also validates that the value is an IP address. Keep this setting false unless a trusted reverse proxy overwrites these headers and direct client-supplied values cannot reach the app. When false, the email-based limit remains active but IP-based limiting is unavailable. If the rate-limit table is missing or SQL Server is unavailable, login fails closed with HTTP 503 until the configuration issue is fixed.
 
 The table will accumulate records over time. Schedule a reviewed retention job
 to delete old records (for example, records older than 30 days) and monitor its
@@ -77,9 +73,9 @@ POST /api/auth/logout
 
 The client must delete its access token on logout. Do not store JWTs in localStorage if an XSS-resistant storage strategy is available; for a browser SPA, prefer keeping short-lived access tokens in memory. Always use HTTPS in production.
 
-## Limitations before production
+## Token revocation migration\n\nBefore deploying token-revocation code, review and manually run `docs/create-revoked-access-tokens.sql` against the application database. The application does not create tables automatically. Expired revocation records can be removed by a scheduled retention job, for example daily with `DELETE FROM dbo.RevokedAccessTokens WHERE ExpiresAt <= SYSUTCDATETIME();`.\n\n## Limitations before production
 
-- Stateless access JWTs cannot be individually revoked before expiry. A compromised token remains usable until expiry unless a revocation mechanism or very short-lived tokens with refresh-token rotation are added.
+- Revocation is checked against SQL Server on each protected request, so database availability is required for protected operations. The current design does not implement refresh-token rotation.
 - Add shared persistent login rate limiting/lockout before public exposure.
 - Confirm the current `Users.PasswordHash` encoding is supported by `src/lib/auth/password.ts`.
 - Build and test against a non-production account and the target SQL Server; repository changes have not yet been run against the user's environment.
