@@ -26,7 +26,7 @@ export async function GET(request: Request) {
           t.TenantId, t.Name, t.Code, t.Status AS TenantStatus, t.CreatedAt AS TenantCreatedAt,
           td.DatabaseName, td.IsActive AS DatabaseIsActive, td.SchemaVersion,
           pj.Status AS JobStatus, pj.AttemptCount, pj.MaxAttempts,
-          pj.LastErrorCode, pj.CorrelationId , COALESCE(pj.CompletedAt, pj.StartedAt, pj.CreatedAt) AS JobUpdatedAt,
+          pj.LastErrorCode, pj.CorrelationId, COALESCE(pj.CompletedAt, pj.StartedAt, pj.CreatedAt) AS JobUpdatedAt
         FROM dbo.TenantUsers tu
         INNER JOIN dbo.Users u ON u.UserId = tu.UserId AND u.DeletedAt IS NULL
         INNER JOIN dbo.Tenants t ON t.TenantId = tu.TenantId AND t.DeletedAt IS NULL
