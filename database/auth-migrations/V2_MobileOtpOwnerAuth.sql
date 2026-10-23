@@ -18,14 +18,23 @@ IF EXISTS (
   ALTER TABLE dbo.Users ALTER COLUMN PasswordHash nvarchar(1000) NULL;
 
 IF EXISTS (
+  SELECT 1 FROM sys.key_constraints
+  WHERE parent_object_id = OBJECT_ID('dbo.Users') AND name = 'UQ_Users_Email'
+)
+  ALTER TABLE dbo.Users DROP CONSTRAINT UQ_Users_Email;
+ELSE IF EXISTS (
   SELECT 1 FROM sys.indexes
   WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'UQ_Users_Email'
 )
   DROP INDEX UQ_Users_Email ON dbo.Users;
 
-CREATE UNIQUE INDEX UQ_Users_Email
-  ON dbo.Users(Email)
-  WHERE Email IS NOT NULL;
+IF NOT EXISTS (
+  SELECT 1 FROM sys.indexes
+  WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'UQ_Users_Email'
+)
+  CREATE UNIQUE INDEX UQ_Users_Email
+    ON dbo.Users(Email)
+    WHERE Email IS NOT NULL;
 
 IF OBJECT_ID('dbo.OwnerOtpChallenges', 'U') IS NULL
 BEGIN
