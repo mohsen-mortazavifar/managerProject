@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowRight, KeyRound, LoaderCircle, Phone, ShieldCheck } from "lucide-react";
 
 type RequestResult = { challengeId?: string; message?: string; error?: string };
@@ -9,17 +9,12 @@ type VerifyResult = { accessToken?: string; error?: string };
 
 export default function OwnerLoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [mobile, setMobile] = useState("");
   const [challengeId, setChallengeId] = useState("");
   const [code, setCode] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (searchParams.get("registered") === "1") setNotice("ثبت‌نام انجام شد. برای ورود، کد جدید دریافت کنید.");
-  }, [searchParams]);
 
   async function requestCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
