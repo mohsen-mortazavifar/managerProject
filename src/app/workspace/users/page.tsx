@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CircleUserRound, LogOut, Plus, RefreshCw, ShieldCheck, UserRoundX, Users } from "lucide-react";
 
@@ -21,10 +21,8 @@ export default function WorkspaceUsersPage() {
   const router = useRouter();
   const [members, setMembers] = useState<Member[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [mobile, setMobile] = useState("");
   const [roleName, setRoleName] = useState("TenantUser");
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [changingId, setChangingId] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");\n  const [invitations, setInvitations] = useState<Invitation[]>([]);\n  const [inviteUrl, setInviteUrl] = useState("");\n  const [inviteBusy, setInviteBusy] = useState(false);
@@ -56,27 +54,6 @@ export default function WorkspaceUsersPage() {
     const timer = window.setTimeout(() => { void load(); }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
-
-  async function addMember(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(""); setNotice("");
-    const token = sessionStorage.getItem("repairMasterAccessToken");
-    if (!token) { router.replace("/owner-login"); return; }
-    setSaving(true);
-    try {
-      const response = await fetch("/api/workspace/users", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ mobile, roleName }),
-      });
-      const result = await response.json() as ResponseData;
-      if (!response.ok) throw new Error(result.error || "افزودن کاربر انجام نشد.");
-      setMobile(""); setNotice(result.message || "کاربر اضافه شد.");
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "افزودن کاربر انجام نشد.");
-    } finally { setSaving(false); }
-  }
 
   async function createInvitation() {
     const token = sessionStorage.getItem("repairMasterAccessToken");
