@@ -232,37 +232,55 @@ export async function PATCH(request: Request) {
   const auth = await requireAuth(request);
   if (!auth.ok) return auth.response;
   if (auth.user.isSystemAdmin) return json({ error: "این بخش مخصوص مالک کسب‌وکار است." }, 403);
-
   let body: unknown;
   try { body = await request.json(); } catch { return json({ error: "درخواست نامعتبر است." }, 400); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "درخواست نامعتبر است." }, 400);
-
-  const input = body as { tenantUserId?: unknown; isActive?: unknown };
-  if (typeof input.tenantUserId !== "string" || !/^\\d+$/.test(input.tenantUserId) || typeof input.isActive !== "boolean") {
-    return json({ error: "اطلاعات عضویت معتبر نیست." }, 400);
+  const input = body as { tenantUserId?: unknown; isActive?: unknown; roleName?: unknown };
+  if (typeof input.tenantUserId !== "string" || !/^\d+$/.test(input.tenantUserId)) return json({ error: "شناسه عضویت معتبر نیست." }, 400);
+  const hasActiveChange = typeof input.isActive === "boolean";
+  const hasRoleChange = typeof input.roleName === "string";
+  if ((!hasActiveChange && !hasRoleChange) ||
+      (input.isActive !== undefined && typeof input.isActive !== "boolean") ||
+      (input.roleName !== undefined && (typeof input.roleName !== "string" || !["TenantManager", "TenantUser"].includes(input.roleName)))) {
+    return json({ error: "وضعیت یا نقش انتخاب‌شده معتبر نیست." }, 400);
   }
-
   try {
     const tenant = await getOwnerTenant(auth.user.userId);
-    if (!tenant) return json({ error: "دسترسی مالک کسب‌وکار لازم است یا کسب‌وکار هنوز فعال نشده است." }, 403);
-
+    if (!tenant) return json({ error: "این عملیات فقط برای مالک کسب‌وکار مجاز است." }, 403);
     const pool = await getSqlPool();
-    const result = await pool.request()
-      .input("tenantId", sql.BigInt, tenant.TenantId)
-      .input("tenantUserId", sql.BigInt, input.tenantUserId)
-      .input("isActive", sql.Bit, input.isActive)
-      .query(`
-        UPDATE dbo.TenantUsers
-        SET IsActive = @isActive
-        OUTPUT INSERTED.TenantUserId
-        WHERE TenantId = @tenantId
-          AND TenantUserId = @tenantUserId
-          AND IsOwner = 0;
-      `);
-
-    if (!result.recordset.length) return json({ error: "عضویت پیدا نشد یا امکان تغییر آن وجود ندارد." }, 404);
-    return json({ message: input.isActive ? "عضویت فعال شد." : "عضویت غیرفعال شد." });
-  } catch {
-    return json({ error: "تغییر وضعیت عضویت انجام نشد." }, 503);
-  }
+    const tx = new sql.Transaction(pool);
+    await tx.begin();
+    try {
+      const memberResult = await new sql.Request(tx).input("tenantId", sql.BigInt, tenant.TenantId)
+        .input("tenantUserId", sql.BigInt, input.tenantUserId)
+        .query(`SELECT TenantUserId, IsOwner FROM dbo.TenantUsers WITH (UPDLOCK, HOLDLOCK)
+                WHERE TenantId = @tenantId AND TenantUserId = @tenantUserId;`);
+      const member = memberResult.recordset[0];
+      if (!member || Boolean(member.IsOwner)) {
+        await tx.rollback();
+        return json({ error: "عضویت پیدا نشد یا امکان تغییر مالک وجود ندارد." }, 404);
+      }
+      if (hasActiveChange) {
+        await new sql.Request(tx).input("tenantId", sql.BigInt, tenant.TenantId)
+          .input("tenantUserId", sql.BigInt, input.tenantUserId).input("isActive", sql.Bit, input.isActive)
+          .query(`UPDATE dbo.TenantUsers SET IsActive = @isActive
+                  WHERE TenantId = @tenantId AND TenantUserId = @tenantUserId AND IsOwner = 0;`);
+      }
+      if (hasRoleChange) {
+        const roleResult = await new sql.Request(tx).input("roleName", sql.NVarChar(200), input.roleName)
+          .query("SELECT TOP (1) RoleId FROM dbo.Roles WHERE Name = @roleName AND IsSystemRole = 1;");
+        const roleId = roleResult.recordset[0]?.RoleId;
+        if (!roleId) throw new Error("ROLE_NOT_FOUND");
+        await new sql.Request(tx).input("tenantUserId", sql.BigInt, input.tenantUserId).input("roleId", sql.BigInt, roleId)
+          .query(`DELETE FROM dbo.UserRoles WHERE TenantUserId = @tenantUserId;
+                  INSERT INTO dbo.UserRoles (TenantUserId, RoleId, AssignedAt)
+                  VALUES (@tenantUserId, @roleId, SYSUTCDATETIME());`);
+      }
+      await tx.commit();
+      return json({ message: hasRoleChange ? "نقش عضو با موفقیت تغییر کرد." : input.isActive ? "عضویت فعال شد." : "عضویت غیرفعال شد." });
+    } catch (error) {
+      try { await tx.rollback(); } catch { /* transaction may already have ended */ }
+      throw error;
+    }
+  } catch { return json({ error: "تغییر وضعیت یا نقش عضو انجام نشد." }, 503); }
 }
