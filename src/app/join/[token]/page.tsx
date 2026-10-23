@@ -19,6 +19,7 @@ export default function JoinWorkspacePage() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [activated, setActivated] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,10 +57,10 @@ export default function JoinWorkspacePage() {
       });
       const result = await response.json() as ApiResult;
       if (!response.ok) throw new Error(result.error || "تأیید شماره انجام نشد.");
-      setNotice(result.message || "عضویت ثبت شد.");
+      setNotice(result.message || "عضویت شما با موفقیت فعال شد.");
       setChallengeId("");
       setCode("");
-      setTimeout(() => router.replace("/owner-login"), 1800);
+      setActivated(true);
     } catch (e) { setError(e instanceof Error ? e.message : "ارتباط با سرور برقرار نشد."); }
     finally { setBusy(false); }
   }
@@ -71,6 +72,13 @@ export default function JoinWorkspacePage() {
         <div className="auth-brand"><span>RM</span><div><strong>Repair Master</strong><small>پیوستن به تیم</small></div></div>
         <div className="auth-icon"><Building2 size={23} /></div>
         <h1>پذیرش دعوت‌نامه</h1>
+        {activated ? (
+          <div className="auth-form" role="status">
+            <div className="auth-success"><CheckCircle2 size={22} /><span>فعال‌سازی با موفقیت انجام شد.</span></div>
+            <p className="auth-description">عضویت شما در «{invitation?.businessName || "این کسب‌وکار"}» ثبت شد. اکنون می‌توانید با شماره موبایل تأییدشده وارد حساب خود شوید.</p>
+            <a className="auth-submit" href="/owner-login"><CheckCircle2 size={17} /> رفتن به صفحه ورود</a>
+          </div>
+        ) : <>
         {invitation ? (
           <div className="auth-success"><Building2 size={17} /><span>دعوت شده‌اید به «{invitation.businessName}» با نقش {invitation.roleName === "TenantManager" ? "مدیر تعمیرگاه" : "کاربر عادی"}.</span></div>
         ) : !error ? <p className="auth-description">در حال بررسی دعوت‌نامه...</p> : null}
@@ -99,6 +107,7 @@ export default function JoinWorkspacePage() {
           </form>
         )}
         <div className="auth-security"><ShieldCheck size={16} /><span>لینک دعوت ۷ روز اعتبار دارد و پس از پذیرش فقط یک بار قابل استفاده است.</span></div>
+        </>}
       </section>
     </main>
   );
