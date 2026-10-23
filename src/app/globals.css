@@ -216,3 +216,19 @@ a { color: inherit; text-decoration: none; }
 .plan-active-toggle input { width: 17px; height: 17px; }
 .tenant-toolbar select { border: 1px solid #e7ebf2; border-radius: 8px; padding: 8px 12px; background: white; color: #27334a; }
 @media (max-width: 600px) { .plan-form-grid { grid-template-columns: minmax(0, 1fr); } }
+
+
+/* Subscription orders and payment review */
+.subscription-section-title { margin: 28px 0 14px; color: #18243b; font-size: 18px; font-weight: 750; }
+.subscription-plan-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(230px,1fr)); gap: 16px; }
+.subscription-plan-card { display: flex; flex-direction: column; gap: 12px; padding: 22px; background: #fff; border: 1px solid #e7ebf2; border-radius: 14px; box-shadow: 0 5px 18px rgba(30,45,75,.04); }
+.subscription-plan-card h3 { margin: 0; font-size: 18px; }
+.subscription-plan-card p { margin: 0; color: #718096; min-height: 36px; }
+.subscription-price { color: #253b70; font-size: 23px; }
+.subscription-duration { color: #64748b; font-size: 13px; }
+.subscription-plan-card ul { margin: 0; padding-right: 20px; line-height: 2; color: #44516a; }
+.subscription-plan-card .tenant-primary { margin-top: auto; justify-content: center; }
+.payment-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.payment-actions .tenant-primary, .payment-actions .tenant-cancel { padding: 8px 10px; font-size: 12px; }
+.tenant-toolbar select { border: 1px solid #e7ebf2; border-radius: 8px; padding: 8px 12px; background: white; color: #27334a; }
+@media (max-width: 640px) { .subscription-plan-grid { grid-template-columns: minmax(0,1fr); } .tenant-table-wrap { overflow-x: auto; } }
