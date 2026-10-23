@@ -61,6 +61,9 @@ export default function OnboardingPage() {
       }
       setData(result);
       setError("");
+      if (result.tenant?.status === "Active" && result.database?.ready) {
+        router.replace("/workspace");
+      }
     } catch {
       setError("ارتباط با سرور برقرار نشد. دوباره تلاش کنید.");
     } finally {
