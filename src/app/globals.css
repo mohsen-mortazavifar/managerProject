@@ -207,3 +207,15 @@ a { color: inherit; text-decoration: none; }
 .health-status-card > svg { color: #2caa7b; }.health-status-card:has(svg.lucide-circle-x) > svg { color: #c64b4b; }
 .health-status-card span { font-size: 12px; line-height: 1.9; }.health-status-card small { margin-top: 6px; color: #9aa4b5; font-size: 10px; }
 .health-spin { animation: health-spin 1s linear infinite; } @keyframes health-spin { to { transform: rotate(360deg); } }
+
+
+/* Mobile OTP authentication */
+.auth-back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 20px; color: #73819a; font-size: 11px; }
+.auth-back:hover, .auth-footnote a { color: #4d6de2; }
+.auth-form label { display: flex; align-items: center; gap: 6px; }
+.auth-form input:focus { border-color: #8094f4; box-shadow: 0 0 0 3px #e9edff; outline: none; }
+.auth-form input[dir="ltr"] { text-align: left; letter-spacing: .3px; }
+.auth-success { display: flex; align-items: flex-start; gap: 7px; margin: 4px 0 8px; padding: 10px 11px; border: 1px solid #ccefe0; border-radius: 8px; background: #f0fbf6; color: #217b5a; font-size: 11px; line-height: 1.9; }
+.auth-secondary { min-height: 40px; margin-top: 5px; border: 1px solid #e3e8f1; border-radius: 8px; background: white; color: #68758d; font-size: 11px; }
+.auth-form button:disabled { cursor: not-allowed; opacity: .65; }
+.auth-footnote { line-height: 1.9; }
