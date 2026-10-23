@@ -95,6 +95,7 @@ export default function Home() {
                 key={item.label}
                 onClick={() => {
                   if (item.label === "کسب‌وکارها") { router.push("/tenants"); setMenuOpen(false); return; }
+                  if (item.label === "پلن‌ها و اشتراک‌ها") { router.push("/plans"); setMenuOpen(false); return; }
                   if (item.label === "سلامت سامانه") { router.push("/health"); setMenuOpen(false); return; }
                   if (!item.active) { setSearch(item.label); } else { setSearch(""); }
                   setMenuOpen(false);
@@ -192,7 +193,7 @@ export default function Home() {
               {filteredItems.map((item, index) => {
                 const Icon = item.icon;
                 return (
-                  <article className="module-card" key={item.title} onClick={item.title === "مدیریت کسب‌وکارها" ? () => router.push("/tenants") : undefined} role={item.title === "مدیریت کسب‌وکارها" ? "link" : undefined} tabIndex={item.title === "مدیریت کسب‌وکارها" ? 0 : undefined} onKeyDown={item.title === "مدیریت کسب‌وکارها" ? (event) => { if (event.key === "Enter" || event.key === " ") router.push("/tenants"); } : undefined}>
+                  <article className="module-card" key={item.title} onClick={item.title === "مدیریت کسب‌وکارها" ? () => router.push("/tenants") : item.title === "اشتراک‌ها و پلن‌ها" ? () => router.push("/plans") : undefined} role={item.title === "مدیریت کسب‌وکارها" || item.title === "اشتراک‌ها و پلن‌ها" ? "link" : undefined} tabIndex={item.title === "مدیریت کسب‌وکارها" || item.title === "اشتراک‌ها و پلن‌ها" ? 0 : undefined} onKeyDown={item.title === "مدیریت کسب‌وکارها" || item.title === "اشتراک‌ها و پلن‌ها" ? (event) => { if (event.key === "Enter" || event.key === " ") router.push(item.title === "مدیریت کسب‌وکارها" ? "/tenants" : "/plans"); } : undefined}>
                     <div className="module-card-top">
                       <div className={`module-icon module-icon-${index % 4}`}><Icon size={21} strokeWidth={1.8} /></div>
                       <span className="module-arrow"><ArrowUpLeft size={17} /></span>
