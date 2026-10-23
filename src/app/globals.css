@@ -323,3 +323,9 @@ a { color: inherit; text-decoration: none; }
 .users-invite-link label { grid-column: 1 / -1; color: #53627c; font-size: 11px; font-weight: 700; }
 .users-invite-link input { width: 100%; min-width: 0; height: 42px; padding: 0 10px; border: 1px solid #dfe6f2; border-radius: 8px; background: white; color: #33415c; font-size: 11px; }
 @media (max-width: 560px) { .users-invite-link { grid-template-columns: 1fr; }.users-invite-link label { grid-column: auto; }.users-invite-link .users-primary { width: 100%; } }
+
+
+.users-member-actions { display: flex; align-items: center; gap: 8px; min-width: 230px; }
+.users-member-actions select { min-width: 112px; max-width: 150px; height: 32px; padding: 0 8px; border: 1px solid #e5eaf2; border-radius: 7px; background: #fff; color: #44516a; font-size: 10px; }
+.users-member-actions select:disabled { opacity: .6; }
+@media (max-width: 760px) { .users-member-actions { align-items: stretch; flex-direction: column; min-width: 125px; } .users-member-actions select { max-width: none; width: 100%; } }
