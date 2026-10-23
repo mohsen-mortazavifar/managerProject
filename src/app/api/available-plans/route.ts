@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSqlPool } from "@/lib/db";
+import { getSqlPool, sql } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/guard";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -7,7 +7,7 @@ export async function GET(request:Request){
  const auth=await requireAuth(request);if(!auth.ok)return auth.response;
  try{
   const pool=await getSqlPool();
-  const owner=await pool.request().input("userId", (await import("@/lib/db")).sql.BigInt, auth.user.userId).query(`
+  const owner=await pool.request().input("userId", sql.BigInt, auth.user.userId).query(`
    SELECT TOP(1) t.TenantId,t.Status FROM dbo.TenantUsers tu
    INNER JOIN dbo.Tenants t ON t.TenantId=tu.TenantId
    WHERE tu.UserId=@userId AND tu.IsOwner=1 AND tu.IsActive=1 AND t.DeletedAt IS NULL
