@@ -26,6 +26,7 @@ const navigation = [
   { label: "کسب‌وکارها", icon: Building2 },
   { label: "کاربران و نقش‌ها", icon: Users },
   { label: "پلن‌ها و اشتراک‌ها", icon: CreditCard },
+  { label: "بررسی پرداخت‌ها", icon: CheckCircle2 },
   { label: "پایگاه‌های داده", icon: Database },
   { label: "گزارش رویدادها", icon: FileClock },
   { label: "سلامت سامانه", icon: Activity },
@@ -95,7 +96,7 @@ export default function Home() {
                 key={item.label}
                 onClick={() => {
                   if (item.label === "کسب‌وکارها") { router.push("/tenants"); setMenuOpen(false); return; }
-                  if (item.label === "پلن‌ها و اشتراک‌ها") { router.push("/plans"); setMenuOpen(false); return; }
+                  if (item.label === "پلن‌ها و اشتراک‌ها") { router.push("/plans"); setMenuOpen(false); return; }\n                  if (item.label === "بررسی پرداخت‌ها") { router.push("/payments"); setMenuOpen(false); return; }
                   if (item.label === "سلامت سامانه") { router.push("/health"); setMenuOpen(false); return; }
                   if (!item.active) { setSearch(item.label); } else { setSearch(""); }
                   setMenuOpen(false);
@@ -193,7 +194,7 @@ export default function Home() {
               {filteredItems.map((item, index) => {
                 const Icon = item.icon;
                 return (
-                  <article className="module-card" key={item.title} onClick={item.title === "مدیریت کسب‌وکارها" ? () => router.push("/tenants") : item.title === "اشتراک‌ها و پلن‌ها" ? () => router.push("/plans") : undefined} role={item.title === "مدیریت کسب‌وکارها" || item.title === "اشتراک‌ها و پلن‌ها" ? "link" : undefined} tabIndex={item.title === "مدیریت کسب‌وکارها" || item.title === "اشتراک‌ها و پلن‌ها" ? 0 : undefined} onKeyDown={item.title === "مدیریت کسب‌وکارها" || item.title === "اشتراک‌ها و پلن‌ها" ? (event) => { if (event.key === "Enter" || event.key === " ") router.push(item.title === "مدیریت کسب‌وکارها" ? "/tenants" : "/plans"); } : undefined}>
+                  <article className="module-card" key={item.title} onClick={item.title === "مدیریت کسب‌وکارها" ? () => router.push("/tenants") : item.title === "اشتراک‌ها و پلن‌ها" ? () => router.push("/plans") : item.title === "بررسی پرداخت‌ها" ? () => router.push("/payments") : undefined} role={item.title === "مدیریت کسب‌وکارها" || item.title === "اشتراک‌ها و پلن‌ها" || item.title === "بررسی پرداخت‌ها" ? "link" : undefined} tabIndex={item.title === "مدیریت کسب‌وکارها" || item.title === "اشتراک‌ها و پلن‌ها" || item.title === "بررسی پرداخت‌ها" ? 0 : undefined} onKeyDown={item.title === "مدیریت کسب‌وکارها" || item.title === "اشتراک‌ها و پلن‌ها" || item.title === "بررسی پرداخت‌ها" ? (event) => { if (event.key === "Enter" || event.key === " ") router.push(item.title === "مدیریت کسب‌وکارها" ? "/tenants" : item.title === "اشتراک‌ها و پلن‌ها" ? "/plans" : "/payments"); } : undefined}>
                     <div className="module-card-top">
                       <div className={`module-icon module-icon-${index % 4}`}><Icon size={21} strokeWidth={1.8} /></div>
                       <span className="module-arrow"><ArrowUpLeft size={17} /></span>
