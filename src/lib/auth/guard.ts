@@ -9,7 +9,7 @@ export type AuthGuardResult =
 export async function requireAuth(request: Request): Promise<AuthGuardResult> {
   const bearerToken = getBearerToken(request);
   const tokenUser = bearerToken ? getBearerUser(request) : null;
-  if (!tokenUser) {
+  if (!bearerToken || !tokenUser) {
     return {
       ok: false,
       response: NextResponse.json(
