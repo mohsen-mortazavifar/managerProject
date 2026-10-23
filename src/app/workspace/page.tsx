@@ -105,9 +105,9 @@ export default function WorkspacePage() {
           <article className="workspace-module-card workspace-module-card-active">
             <span><Building2 size={21} /></span><div><h3>اطلاعات کسب‌وکار</h3><p>وضعیت و مشخصات فضای کاری فعلی</p></div><small>آماده</small>
           </article>
-          <article className="workspace-module-card">
-            <span><CircleUserRound size={21} /></span><div><h3>کاربران و دسترسی‌ها</h3><p>مدیریت اعضا و نقش‌های دسترسی</p></div><small>مرحله بعد</small>
-          </article>
+          <button type="button" className="workspace-module-card workspace-module-card-link" onClick={() => router.push("/workspace/users")} aria-label="مدیریت کاربران و دسترسی‌ها">
+            <span><CircleUserRound size={21} /></span><div><h3>کاربران و دسترسی‌ها</h3><p>مدیریت اعضا و نقش‌های دسترسی</p></div><small>ورود به بخش</small>
+          </button>
           <article className="workspace-module-card">
             <span><Wrench size={21} /></span><div><h3>خدمات و تعمیرات</h3><p>ثبت و پیگیری سفارش‌های تعمیر</p></div><small>در نقشه راه</small>
           </article>
