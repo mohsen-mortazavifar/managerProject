@@ -9,7 +9,7 @@ type Member = {
   isOwner: boolean; isActive: boolean; joinedAt: string | null; roles: string[];
 };
 type Role = { roleId: string; name: string; description: string };
-type Invitation = { invitationId: string; roleName: string; expiresAt: string; acceptedAt: string | null; revokedAt: string | null; createdAt: string };
+type Invitation = { invitationId: string; roleName: string; expiresAt: string; acceptedAt: string | null; revokedAt: string | null; createdAt: string; isExpired: boolean };
 type ResponseData = { error?: string; message?: string; members?: Member[]; roles?: Role[]; invitations?: Invitation[]; inviteUrl?: string };
 
 const roleLabels: Record<string, string> = {
@@ -26,7 +26,8 @@ export default function WorkspaceUsersPage() {
   const [loading, setLoading] = useState(true);
   const [changingId, setChangingId] = useState("");
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");  const [invitations, setInvitations] = useState<Invitation[]>([]); const [inviteUrl, setInviteUrl] = useState("");  const [inviteBusy, setInviteBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [invitations, setInvitations] = useState<Invitation[]>([]); const [inviteUrl, setInviteUrl] = useState("");  const [inviteBusy, setInviteBusy] = useState(false);
 
   const load = useCallback(async () => {
     const token = sessionStorage.getItem("repairMasterAccessToken");
@@ -45,6 +46,9 @@ export default function WorkspaceUsersPage() {
       if (!response.ok) throw new Error(result.error || "دریافت فهرست اعضا انجام نشد.");
       setMembers(result.members || []);
       setRoles(result.roles || []);
+      const inviteResponse = await fetch("/api/workspace/invitations", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+      const inviteResult = await inviteResponse.json() as ResponseData;
+      if (inviteResponse.ok) setInvitations(inviteResult.invitations || []);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "ارتباط با سرور برقرار نشد.");
@@ -159,7 +163,7 @@ export default function WorkspaceUsersPage() {
           <div className="users-list-heading"><div className="users-panel-heading"><span><ShieldCheck size={19} /></span><div><h2>دعوت‌نامه‌ها</h2><p>دعوت‌های ایجادشده و وضعیت آن‌ها</p></div></div><span className="users-count">{invitations.length} دعوت</span></div>
           {invitations.length === 0 ? <div className="users-empty">دعوت‌نامه‌ای ایجاد نشده است.</div> : <div className="users-table-wrap"><table className="users-table"><thead><tr><th>نقش</th><th>ایجاد</th><th>انقضا</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>
             {invitations.map((invite) => {
-              const status = invite.acceptedAt ? "پذیرفته‌شده" : invite.revokedAt ? "لغوشده" : new Date(invite.expiresAt).getTime() <= Date.now() ? "منقضی‌شده" : "در انتظار";
+              const status = invite.acceptedAt ? "پذیرفته‌شده" : invite.revokedAt ? "لغوشده" : invite.isExpired ? "منقضی‌شده" : "در انتظار";
               return <tr key={invite.invitationId}><td>{roleLabels[invite.roleName] || invite.roleName}</td><td>{new Date(invite.createdAt).toLocaleDateString("fa-IR")}</td><td>{new Date(invite.expiresAt).toLocaleDateString("fa-IR")}</td><td>{status}</td><td>{!invite.acceptedAt && !invite.revokedAt && status === "در انتظار" && <button className="users-toggle users-toggle-off" onClick={() => void revokeInvitation(invite.invitationId)}>لغو دعوت</button>}</td></tr>;
             })}
           </tbody></table></div>}
