@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ArrowRight, KeyRound, LoaderCircle, Phone, ShieldCheck } from "lucide-react";
 
 type RequestResult = { challengeId?: string; message?: string; error?: string };
@@ -49,7 +50,7 @@ export default function OwnerLoginPage() {
   return (
     <main className="auth-page" dir="rtl">
       <section className="auth-card">
-        <a className="auth-back" href="/"><ArrowRight size={16} /> صفحه اصلی</a>
+        <Link className="auth-back" href="/"><ArrowRight size={16} /> صفحه اصلی</Link>
         <div className="auth-brand"><span>RM</span><div><strong>Repair Master</strong><small>ورود به فضای کسب‌وکار</small></div></div>
         <div className="auth-icon"><Phone size={23} /></div>
         <h1>ورود مالک با موبایل</h1>
