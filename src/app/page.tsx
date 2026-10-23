@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
+  CheckCircle2,
   ArrowDownLeft,
   ArrowUpLeft,
   Building2,
@@ -44,6 +45,12 @@ const workItems = [
     description: "مدیریت پلن‌ها، دوره اشتراک و وضعیت پرداخت",
     icon: CreditCard,
     tag: "Billing",
+  },
+  {
+    title: "بررسی پرداخت‌ها",
+    description: "تأیید پرداخت مشتری و فعال‌سازی یا تمدید اشتراک",
+    icon: CheckCircle2,
+    tag: "Payments",
   },
   {
     title: "پایگاه‌های داده",
@@ -96,7 +103,8 @@ export default function Home() {
                 key={item.label}
                 onClick={() => {
                   if (item.label === "کسب‌وکارها") { router.push("/tenants"); setMenuOpen(false); return; }
-                  if (item.label === "پلن‌ها و اشتراک‌ها") { router.push("/plans"); setMenuOpen(false); return; }\n                  if (item.label === "بررسی پرداخت‌ها") { router.push("/payments"); setMenuOpen(false); return; }
+                  if (item.label === "پلن‌ها و اشتراک‌ها") { router.push("/plans"); setMenuOpen(false); return; }
+                  if (item.label === "بررسی پرداخت‌ها") { router.push("/payments"); setMenuOpen(false); return; }
                   if (item.label === "سلامت سامانه") { router.push("/health"); setMenuOpen(false); return; }
                   if (!item.active) { setSearch(item.label); } else { setSearch(""); }
                   setMenuOpen(false);
