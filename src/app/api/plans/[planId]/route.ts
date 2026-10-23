@@ -7,7 +7,22 @@ type Ctx={params:Promise<{planId:string}>};
 type Input={name?:unknown;description?:unknown;price?:unknown;durationDays?:unknown;maxBranches?:unknown;maxUsers?:unknown;maxSmsPerMonth?:unknown;isActive?:unknown};
 function fail(message:string,status:number){return NextResponse.json({error:message},{status,headers:{"Cache-Control":"no-store"}});}
 async function id(ctx:Ctx){const {planId}=await ctx.params;return /^[1-9]\d{0,18}$/.test(planId)?planId:null;}
-function parse(i:Input){const name=typeof i.name==="string"?i.name.trim():"",description=typeof i.description==="string"?i.description.trim():"",price=typeof i.price==="number"?i.price:Number(i.price),durationDays=Number(i.durationDays),maxBranches=Number(i.maxBranches),maxUsers=Number(i.maxUsers),maxSmsPerMonth=Number(i.maxSmsPerMonth),isActive=i.isActive;
+
+type ParseResult =
+  | { error: string }
+  | {
+      value: {
+        name: string;
+        description: string | null;
+        price: number;
+        durationDays: number;
+        maxBranches: number;
+        maxUsers: number;
+        maxSmsPerMonth: number;
+        isActive: boolean;
+      };
+    };
+function parse(i:Input):ParseResult{const name=typeof i.name==="string"?i.name.trim():"",description=typeof i.description==="string"?i.description.trim():"",price=typeof i.price==="number"?i.price:Number(i.price),durationDays=Number(i.durationDays),maxBranches=Number(i.maxBranches),maxUsers=Number(i.maxUsers),maxSmsPerMonth=Number(i.maxSmsPerMonth),isActive=i.isActive;
 if(!name||name.length>120)return {error:"نام پلن الزامی است و حداکثر ۱۲۰ کاراکتر دارد."} as const;
 if(description.length>1000)return {error:"توضیحات حداکثر ۱۰۰۰ کاراکتر می‌تواند باشد."} as const;
 if(!Number.isFinite(price)||price<0||price>9999999999999999)return {error:"قیمت معتبر نیست."} as const;

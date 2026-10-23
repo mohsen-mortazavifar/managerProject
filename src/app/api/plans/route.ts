@@ -5,7 +5,24 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 type Input = { name?: unknown; description?: unknown; price?: unknown; durationDays?: unknown; maxBranches?: unknown; maxUsers?: unknown; maxSmsPerMonth?: unknown; isActive?: unknown };
 function fail(message: string, status: number) { return NextResponse.json({ error: message }, { status, headers: { "Cache-Control": "no-store" } }); }
-function parse(input: Input) {
+
+
+type ParseResult =
+  | { error: string }
+  | {
+      value: {
+        name: string;
+        description: string | null;
+        price: number;
+        durationDays: number;
+        maxBranches: number;
+        maxUsers: number;
+        maxSmsPerMonth: number;
+        isActive: boolean;
+      };
+    };
+
+function parse(input: Input): ParseResult {
  const name = typeof input.name === "string" ? input.name.trim() : "";
  const description = typeof input.description === "string" ? input.description.trim() : "";
  const price = typeof input.price === "number" ? input.price : Number(input.price);

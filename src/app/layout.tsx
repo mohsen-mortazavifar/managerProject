@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ReactNode } from "react";
 import { iranYekan } from "@/lib/fonts";
 import "./globals.css";
 
@@ -7,7 +8,11 @@ export const metadata: Metadata = {
   description: "پنل مدیریت پلتفرم Repair Master SaaS",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="fa" dir="rtl" className={`${iranYekan.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">{children}</body>
