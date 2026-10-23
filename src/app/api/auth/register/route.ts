@@ -7,8 +7,8 @@ import { getLoginClientIp } from "@/lib/auth/rate-limit";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const emailPattern = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
-const mobilePattern = /^[+0-9()\\-\\s]{7,20}$/;
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const mobilePattern = /^[+0-9()\-\s]{7,20}$/;
 
 function digest(value: string): Buffer {
   return createHash("sha256").update(value, "utf8").digest();
