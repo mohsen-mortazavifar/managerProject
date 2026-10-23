@@ -69,3 +69,21 @@ export async function POST(request: Request) {
     return json({ message: "کد تأیید ارسال شد؛ اعتبار کد ۵ دقیقه است.", challengeId });
   } catch { return json({ error: "درخواست کد فعلاً در دسترس نیست." }, 503); }
 }
+
+
+export async function GET(request: Request) {
+  const token = new URL(request.url).searchParams.get("token") || "";
+  if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) return json({ error: "لینک دعوت‌نامه معتبر نیست." }, 400);
+  try {
+    const pool = await getSqlPool();
+    const result = await pool.request().input("tokenHash", sql.VarBinary(32), digest(token)).query(`
+      SELECT TOP (1) t.Name AS BusinessName, i.RoleName, i.ExpiresAt
+      FROM dbo.WorkspaceInvitations i JOIN dbo.Tenants t ON t.TenantId = i.TenantId
+      WHERE i.TokenHash = @tokenHash AND i.AcceptedAt IS NULL AND i.RevokedAt IS NULL
+        AND i.ExpiresAt > SYSUTCDATETIME() AND t.DeletedAt IS NULL AND t.Status = N'Active';
+    `);
+    const row = result.recordset[0];
+    if (!row) return json({ error: "این دعوت‌نامه معتبر نیست یا منقضی شده است." }, 404);
+    return json({ invitation: { businessName: String(row.BusinessName), roleName: String(row.RoleName), expiresAt: row.ExpiresAt } });
+  } catch { return json({ error: "بررسی دعوت‌نامه انجام نشد." }, 503); }
+}
