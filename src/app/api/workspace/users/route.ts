@@ -129,7 +129,10 @@ export async function POST(request: Request) {
     return json({ error: "شماره موبایل یا نقش انتخاب‌شده معتبر نیست." }, 400);
   }
 
-  let mobile: string;\n  try { mobile = normalizeMobile(input.mobile); } catch {\n    return json({ error: "شماره موبایل معتبر نیست. شماره ایران را با 09 وارد کنید." }, 400);\n  }
+  let mobile: string;
+  try { mobile = normalizeMobile(input.mobile); } catch {
+    return json({ error: "شماره موبایل معتبر نیست. شماره ایران را با 09 وارد کنید." }, 400);
+  }
 
   try {
     const tenant = await getOwnerTenant(auth.user.userId);
