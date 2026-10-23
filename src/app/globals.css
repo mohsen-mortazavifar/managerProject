@@ -318,3 +318,8 @@ a { color: inherit; text-decoration: none; }
 .users-footnote { margin: 14px 0 0; color: #98a2b3; font-size: 10px; line-height: 1.9; }
 .users-notice { margin-bottom: 18px; padding: 12px 15px; border: 1px solid #ccefe0; border-radius: 10px; background: #f0fbf6; color: #217b5a; font-size: 12px; }
 @media (max-width: 760px) { .users-panel { padding: 16px; }.users-add-form { grid-template-columns: 1fr; }.users-primary { width: 100%; }.users-list-heading { align-items: flex-start; }.users-table th, .users-table td { padding: 12px; } }
+
+.users-invite-link { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; margin-top: 18px; padding: 14px; border: 1px solid #dce5ff; border-radius: 10px; background: #f8faff; }
+.users-invite-link label { grid-column: 1 / -1; color: #53627c; font-size: 11px; font-weight: 700; }
+.users-invite-link input { width: 100%; min-width: 0; height: 42px; padding: 0 10px; border: 1px solid #dfe6f2; border-radius: 8px; background: white; color: #33415c; font-size: 11px; }
+@media (max-width: 560px) { .users-invite-link { grid-template-columns: 1fr; }.users-invite-link label { grid-column: auto; }.users-invite-link .users-primary { width: 100%; } }
