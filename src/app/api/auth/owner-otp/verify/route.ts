@@ -154,13 +154,14 @@ export async function POST(request: Request) {
               (TenantId, JobId, Status, Step, Message, AttemptNumber, StartedAt, CreatedAt)
             VALUES (@tenantId, @jobId, N'Pending', N'Queued', N'درخواست ایجاد دیتابیس در صف قرار گرفت.', 1, SYSUTCDATETIME(), SYSUTCDATETIME());
           `);
+        const user = { userId: String(userId), email: "", fullName, isSystemAdmin: false };
+        const accessToken = createAccessToken(user);
         await tx.commit();
 
-        const user = { userId: String(userId), email: "", fullName, isSystemAdmin: false };
         return respond({
           message: "شماره تأیید شد و ثبت‌نام انجام شد.",
           tokenType: "Bearer",
-          accessToken: createAccessToken(user),
+          accessToken,
           expiresIn: JWT_TTL_SECONDS,
           user,
           tenant: { tenantId: String(tenantId), status: "Pending" },
@@ -180,11 +181,12 @@ export async function POST(request: Request) {
           await tx.commit();
           return respond({ error: "کد معتبر نیست یا منقضی شده است." }, 401);
         }
+        const user = { userId: String(userRow.UserId), email: String(userRow.Email || ""), fullName: String(userRow.FullName), isSystemAdmin: false };
+        const accessToken = createAccessToken(user);
         await new sql.Request(tx).input("userId", sql.BigInt, userRow.UserId)
           .query("UPDATE dbo.Users SET MobileVerifiedAt = COALESCE(MobileVerifiedAt, SYSUTCDATETIME()), LastLoginAt = SYSUTCDATETIME() WHERE UserId = @userId;");
         await tx.commit();
-        const user = { userId: String(userRow.UserId), email: String(userRow.Email || ""), fullName: String(userRow.FullName), isSystemAdmin: false };
-        return respond({ tokenType: "Bearer", accessToken: createAccessToken(user), expiresIn: JWT_TTL_SECONDS, user });
+        return respond({ tokenType: "Bearer", accessToken, expiresIn: JWT_TTL_SECONDS, user });
       }
 
       throw new Error("OTP_PURPOSE_INVALID");
