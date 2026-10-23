@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSqlPool, sql } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/guard";
+import { normalizeMobile } from "@/lib/auth/otp";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -128,10 +129,7 @@ export async function POST(request: Request) {
     return json({ error: "شماره موبایل یا نقش انتخاب‌شده معتبر نیست." }, 400);
   }
 
-  const mobile = input.mobile.replace(/[\\s-]/g, "");
-  if (!/^\\+?[0-9]{10,15}$/.test(mobile)) {
-    return json({ error: "شماره موبایل معتبر نیست." }, 400);
-  }
+  let mobile: string;\n  try { mobile = normalizeMobile(input.mobile); } catch {\n    return json({ error: "شماره موبایل معتبر نیست. شماره ایران را با 09 وارد کنید." }, 400);\n  }
 
   try {
     const tenant = await getOwnerTenant(auth.user.userId);
@@ -223,5 +221,45 @@ export async function POST(request: Request) {
     }
   } catch {
     return json({ error: "افزودن کاربر انجام نشد." }, 503);
+  }
+}
+
+
+export async function PATCH(request: Request) {
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
+  if (auth.user.isSystemAdmin) return json({ error: "این بخش مخصوص مالک کسب‌وکار است." }, 403);
+
+  let body: unknown;
+  try { body = await request.json(); } catch { return json({ error: "درخواست نامعتبر است." }, 400); }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "درخواست نامعتبر است." }, 400);
+
+  const input = body as { tenantUserId?: unknown; isActive?: unknown };
+  if (typeof input.tenantUserId !== "string" || !/^\\d+$/.test(input.tenantUserId) || typeof input.isActive !== "boolean") {
+    return json({ error: "اطلاعات عضویت معتبر نیست." }, 400);
+  }
+
+  try {
+    const tenant = await getOwnerTenant(auth.user.userId);
+    if (!tenant) return json({ error: "دسترسی مالک کسب‌وکار لازم است یا کسب‌وکار هنوز فعال نشده است." }, 403);
+
+    const pool = await getSqlPool();
+    const result = await pool.request()
+      .input("tenantId", sql.BigInt, tenant.TenantId)
+      .input("tenantUserId", sql.BigInt, input.tenantUserId)
+      .input("isActive", sql.Bit, input.isActive)
+      .query(`
+        UPDATE dbo.TenantUsers
+        SET IsActive = @isActive
+        OUTPUT INSERTED.TenantUserId
+        WHERE TenantId = @tenantId
+          AND TenantUserId = @tenantUserId
+          AND IsOwner = 0;
+      `);
+
+    if (!result.recordset.length) return json({ error: "عضویت پیدا نشد یا امکان تغییر آن وجود ندارد." }, 404);
+    return json({ message: input.isActive ? "عضویت فعال شد." : "عضویت غیرفعال شد." });
+  } catch {
+    return json({ error: "تغییر وضعیت عضویت انجام نشد." }, 503);
   }
 }
