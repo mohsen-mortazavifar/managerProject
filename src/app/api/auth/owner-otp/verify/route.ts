@@ -172,16 +172,16 @@ export async function POST(request: Request) {
         const account = await new sql.Request(tx)
           .input("mobile", sql.NVarChar(40), mobile)
           .query(`
-            SELECT TOP (1) UserId, Email, FullName, IsActive, IsSystemAdmin, MobileVerifiedAt
+            SELECT TOP (1) UserId, Email, FullName, IsActive, IsSystemAdmin
             FROM dbo.Users WHERE Mobile = @mobile AND DeletedAt IS NULL;
           `);
         const userRow = account.recordset[0];
-        if (!userRow || !Boolean(userRow.IsActive) || !userRow.MobileVerifiedAt || Boolean(userRow.IsSystemAdmin)) {
+        if (!userRow || !Boolean(userRow.IsActive) || Boolean(userRow.IsSystemAdmin)) {
           await tx.commit();
           return respond({ error: "کد معتبر نیست یا منقضی شده است." }, 401);
         }
         await new sql.Request(tx).input("userId", sql.BigInt, userRow.UserId)
-          .query("UPDATE dbo.Users SET LastLoginAt = SYSUTCDATETIME() WHERE UserId = @userId;");
+          .query("UPDATE dbo.Users SET MobileVerifiedAt = COALESCE(MobileVerifiedAt, SYSUTCDATETIME()), LastLoginAt = SYSUTCDATETIME() WHERE UserId = @userId;");
         await tx.commit();
         const user = { userId: String(userRow.UserId), email: String(userRow.Email || ""), fullName: String(userRow.FullName), isSystemAdmin: false };
         return respond({ tokenType: "Bearer", accessToken: createAccessToken(user), expiresIn: JWT_TTL_SECONDS, user });
