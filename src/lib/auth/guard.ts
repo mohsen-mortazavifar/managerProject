@@ -61,13 +61,54 @@ export async function requireAuth(request: Request): Promise<AuthGuardResult> {
       };
     }
 
+    const isSystemAdmin = Boolean(user.IsSystemAdmin);
+    const pathname = new URL(request.url).pathname;
+    const subscriptionExemptPaths = new Set([
+      "/api/auth/me",
+      "/api/auth/logout",
+      "/api/available-plans",
+      "/api/subscription-orders",
+    ]);
+
+    // System administrators manage the platform independently of customer plans.
+    // Tenant users may still view their account and manage subscription orders
+    // when their subscription has expired; other protected APIs require an active plan.
+    if (!isSystemAdmin && !subscriptionExemptPaths.has(pathname) && !pathname.startsWith("/api/admin/")) {
+      const entitlement = await pool.request()
+        .input("userId", sql.BigInt, user.UserId)
+        .query(`
+          SELECT TOP (1) t.TenantId
+          FROM dbo.TenantUsers tu
+          INNER JOIN dbo.Tenants t ON t.TenantId = tu.TenantId
+          INNER JOIN dbo.Subscriptions s ON s.TenantId = t.TenantId
+          WHERE tu.UserId = @userId
+            AND tu.IsActive = 1
+            AND t.DeletedAt IS NULL
+            AND t.Status = N'Active'
+            AND s.Status = N'Active'
+            AND s.StartsAt <= SYSUTCDATETIME()
+            AND s.EndsAt > SYSUTCDATETIME()
+          ORDER BY s.EndsAt DESC;
+        `);
+
+      if (entitlement.recordset.length === 0) {
+        return {
+          ok: false,
+          response: NextResponse.json(
+            { error: "اشتراک فعال ندارید یا اعتبار آن به پایان رسیده است. برای تمدید، به بخش پلن‌ها و اشتراک‌ها بروید.", code: "SUBSCRIPTION_REQUIRED" },
+            { status: 403, headers: { "Cache-Control": "no-store" } },
+          ),
+        };
+      }
+    }
+
     return {
       ok: true,
       user: {
         userId: String(user.UserId),
         email: String(user.Email),
         fullName: String(user.FullName),
-        isSystemAdmin: Boolean(user.IsSystemAdmin),
+        isSystemAdmin,
       },
     };
   } catch {
