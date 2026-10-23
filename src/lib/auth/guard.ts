@@ -61,6 +61,33 @@ export async function requireAuth(request: Request): Promise<AuthGuardResult> {
       };
     }
 
+    // A normal user must still belong to at least one active workspace.
+    // This prevents a removed/disabled member from using protected APIs just
+    // because their account and JWT are still valid.
+    if (!Boolean(user.IsSystemAdmin)) {
+      const membership = await pool.request()
+        .input("userId", sql.BigInt, user.UserId)
+        .query(`
+          SELECT TOP (1) tu.TenantUserId
+          FROM dbo.TenantUsers tu
+          INNER JOIN dbo.Tenants t ON t.TenantId = tu.TenantId
+          WHERE tu.UserId = @userId
+            AND tu.IsActive = 1
+            AND t.DeletedAt IS NULL
+            AND t.Status = N'Active';
+        `);
+
+      if (!membership.recordset.length) {
+        return {
+          ok: false,
+          response: NextResponse.json(
+            { error: "عضویت فعال در هیچ کسب‌وکاری ندارید." },
+            { status: 403, headers: { "Cache-Control": "no-store" } },
+          ),
+        };
+      }
+    }
+
     return {
       ok: true,
       user: {
