@@ -37,7 +37,7 @@ export async function PATCH(request:Request){
   const r=await pool.request().input("paymentId",sql.BigInt,input.paymentTransactionId).input("status",sql.NVarChar(30),input.status).input("gatewayTransactionId",sql.NVarChar(200),gatewayTransactionId||null).query(`
    SET XACT_ABORT ON;
    BEGIN TRANSACTION;
-   DECLARE @CurrentStatus NVARCHAR(30),@SubscriptionId BIGINT,@DurationDays INT,@PlanId BIGINT,@TenantId BIGINT;
+   DECLARE @CurrentStatus NVARCHAR(30),@SubscriptionId BIGINT,@DurationDays INT,@PlanId BIGINT,@TenantId BIGINT,@StartsAt DATETIME2(3);
    SELECT @CurrentStatus=pt.Status,@SubscriptionId=pt.SubscriptionId,@TenantId=pt.TenantId,@PlanId=s.SubscriptionPlanId
    FROM dbo.PaymentTransactions pt WITH (UPDLOCK,HOLDLOCK)
    INNER JOIN dbo.Subscriptions s ON s.SubscriptionId=pt.SubscriptionId
@@ -47,7 +47,10 @@ export async function PATCH(request:Request){
    IF @status=N'Paid'
    BEGIN
     SELECT @DurationDays=DurationDays FROM dbo.SubscriptionPlans WHERE SubscriptionPlanId=@PlanId;
-    UPDATE dbo.Subscriptions SET Status=N'Active',StartsAt=SYSUTCDATETIME(),EndsAt=DATEADD(day,@DurationDays,SYSUTCDATETIME()),UpdatedAt=SYSUTCDATETIME()
+    SELECT @StartsAt=CASE WHEN MAX(EndsAt)>SYSUTCDATETIME() THEN MAX(EndsAt) ELSE SYSUTCDATETIME() END
+    FROM dbo.Subscriptions WHERE TenantId=@TenantId AND SubscriptionId<>@SubscriptionId AND Status=N'Active' AND EndsAt>SYSUTCDATETIME();
+    SET @StartsAt=COALESCE(@StartsAt,SYSUTCDATETIME());
+    UPDATE dbo.Subscriptions SET Status=N'Active',StartsAt=@StartsAt,EndsAt=DATEADD(day,@DurationDays,@StartsAt),UpdatedAt=SYSUTCDATETIME()
     WHERE SubscriptionId=@SubscriptionId;
    END
    ELSE IF @status=N'Failed'
