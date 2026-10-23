@@ -26,7 +26,7 @@ export default function WorkspaceUsersPage() {
   const [loading, setLoading] = useState(true);
   const [changingId, setChangingId] = useState("");
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");\n  const [invitations, setInvitations] = useState<Invitation[]>([]);\n  const [inviteUrl, setInviteUrl] = useState("");\n  const [inviteBusy, setInviteBusy] = useState(false);
+  const [notice, setNotice] = useState("");  const [invitations, setInvitations] = useState<Invitation[]>([]); const [inviteUrl, setInviteUrl] = useState("");  const [inviteBusy, setInviteBusy] = useState(false);
 
   const load = useCallback(async () => {
     const token = sessionStorage.getItem("repairMasterAccessToken");
