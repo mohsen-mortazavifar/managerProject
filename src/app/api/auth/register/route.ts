@@ -202,7 +202,7 @@ export async function POST(request: Request) {
         .query(`
           INSERT INTO dbo.TenantProvisioningLogs
             (TenantId, JobId, Status, Step, Message, AttemptNumber, StartedAt, CreatedAt)
-          VALUES (@tenantId, @jobId, N'Queued', N'Queued', N'درخواست ایجاد دیتابیس در صف قرار گرفت.', 1, SYSUTCDATETIME(), SYSUTCDATETIME());
+          VALUES (@tenantId, @jobId, N'Pending', N'Queued', N'درخواست ایجاد دیتابیس در صف قرار گرفت.', 1, SYSUTCDATETIME(), SYSUTCDATETIME());
         `);
 
       await transaction.commit();
@@ -217,18 +217,26 @@ export async function POST(request: Request) {
         { status: 202, headers: { "Cache-Control": "no-store" } },
       );
     } catch (error) {
-      try { await transaction.rollback(); } catch { /* Preserve the original error. */ }
+      console.log("[register] Transaction failed:", error);
+       return errorResponse(
+    "Registration is temporarily unavailable.",
+    503
+  );
+      try { await transaction.rollback(); } catch { console.log("[register] Transaction failed:", error); }
 
       const sqlError = error as { number?: number; message?: string };
       if (sqlError.number === 2627 || sqlError.number === 2601) {
+        console.log("[register] Transaction failed:", error);
         return errorResponse("ایمیل یا شماره همراه قبلاً ثبت شده است.", 409);
       }
       if (sqlError.message === "TENANT_OWNER_ROLE_MISSING") {
+        console.log("[register] Transaction failed:", error);
         return errorResponse("نقش مالک کسب‌وکار در دیتابیس تعریف نشده است.", 503);
       }
       return errorResponse("ثبت‌نام انجام نشد. ساختار دیتابیس و لاگ سرور را بررسی کنید.", 503);
     }
-  } catch {
+  } catch (error) {
+    console.log("[register] Transaction failed:", error);
     return errorResponse("سرویس ثبت‌نام موقتاً در دسترس نیست. تنظیمات دیتابیس را بررسی کنید.", 503);
   }
 }
