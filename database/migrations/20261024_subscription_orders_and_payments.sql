@@ -40,6 +40,30 @@ BEGIN
   );
 END;
 
+
+/* Fail clearly rather than allowing the API to run against a partial legacy schema. */
+IF COL_LENGTH(N'dbo.Subscriptions', N'SubscriptionId') IS NULL
+ OR COL_LENGTH(N'dbo.Subscriptions', N'TenantId') IS NULL
+ OR COL_LENGTH(N'dbo.Subscriptions', N'SubscriptionPlanId') IS NULL
+ OR COL_LENGTH(N'dbo.Subscriptions', N'Status') IS NULL
+ OR COL_LENGTH(N'dbo.Subscriptions', N'StartsAt') IS NULL
+ OR COL_LENGTH(N'dbo.Subscriptions', N'EndsAt') IS NULL
+ OR COL_LENGTH(N'dbo.Subscriptions', N'PriceAtSubscription') IS NULL
+ OR COL_LENGTH(N'dbo.Subscriptions', N'CreatedAt') IS NULL
+ OR COL_LENGTH(N'dbo.Subscriptions', N'UpdatedAt') IS NULL
+  THROW 51010, 'dbo.Subscriptions exists but is missing required columns. Compare it with docs/validate-schema.sql before continuing.', 1;
+
+IF COL_LENGTH(N'dbo.PaymentTransactions', N'PaymentTransactionId') IS NULL
+ OR COL_LENGTH(N'dbo.PaymentTransactions', N'TenantId') IS NULL
+ OR COL_LENGTH(N'dbo.PaymentTransactions', N'SubscriptionId') IS NULL
+ OR COL_LENGTH(N'dbo.PaymentTransactions', N'Amount') IS NULL
+ OR COL_LENGTH(N'dbo.PaymentTransactions', N'Status') IS NULL
+ OR COL_LENGTH(N'dbo.PaymentTransactions', N'Gateway') IS NULL
+ OR COL_LENGTH(N'dbo.PaymentTransactions', N'GatewayTransactionId') IS NULL
+ OR COL_LENGTH(N'dbo.PaymentTransactions', N'PaidAt') IS NULL
+ OR COL_LENGTH(N'dbo.PaymentTransactions', N'CreatedAt') IS NULL
+  THROW 51011, 'dbo.PaymentTransactions exists but is missing required columns. Compare it with docs/validate-schema.sql before continuing.', 1;
+
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'dbo.Subscriptions') AND name=N'IX_Subscriptions_Tenant_Status_Dates')
   CREATE INDEX IX_Subscriptions_Tenant_Status_Dates ON dbo.Subscriptions(TenantId, Status, StartsAt, EndsAt);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'dbo.PaymentTransactions') AND name=N'IX_PaymentTransactions_Tenant_CreatedAt')
