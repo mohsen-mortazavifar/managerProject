@@ -219,3 +219,18 @@ a { color: inherit; text-decoration: none; }
 .auth-secondary { min-height: 40px; margin-top: 5px; border: 1px solid #e3e8f1; border-radius: 8px; background: white; color: #68758d; font-size: 11px; }
 .auth-form button:disabled { cursor: not-allowed; opacity: .65; }
 .auth-footnote { line-height: 1.9; }
+
+/* Owner onboarding / tenant provisioning status */
+.onboarding-card { max-width: 520px; }
+.onboarding-loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 18px; color: #66748c; }
+.onboarding-details { display: grid; gap: 0; margin: 22px 0; padding: 0 15px; border: 1px solid var(--line); border-radius: 12px; background: #fbfcff; }
+.onboarding-details > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--line); }
+.onboarding-details > div:last-child { border-bottom: 0; }
+.onboarding-details span { color: #7b879c; font-size: 12px; }
+.onboarding-details strong { color: #26334a; font-size: 12px; text-align: left; overflow-wrap: anywhere; }
+.onboarding-actions { display: grid; gap: 10px; margin-top: 20px; }
+.onboarding-actions .auth-submit, .onboarding-actions .auth-secondary { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
+@media (max-width: 560px) {
+  .onboarding-card { width: calc(100% - 28px); }
+  .onboarding-details { padding: 0 10px; }
+}
