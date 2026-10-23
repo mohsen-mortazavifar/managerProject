@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { ArrowRight, Building2, CheckCircle2, KeyRound, LoaderCircle, Phone, ShieldCheck, UserRound } from "lucide-react";
 
 type InvitationInfo = { businessName: string; roleName: string; expiresAt: string };
@@ -9,7 +9,6 @@ type ApiResult = { error?: string; message?: string; challengeId?: string; invit
 
 export default function JoinWorkspacePage() {
   const params = useParams<{ token: string }>();
-  const router = useRouter();
   const token = params.token;
   const [invitation, setInvitation] = useState<InvitationInfo | null>(null);
   const [fullName, setFullName] = useState("");
