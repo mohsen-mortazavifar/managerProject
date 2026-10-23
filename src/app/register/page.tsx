@@ -47,7 +47,7 @@ export default function OwnerRegisterPage() {
       if (!response.ok || !result.accessToken) { setError(result.error || "کد تأیید نشد."); return; }
       sessionStorage.setItem("repairMasterAccessToken", result.accessToken);
       setNotice("شماره تأیید شد؛ درخواست ایجاد فضای کسب‌وکار ثبت شد.");
-      router.replace("/owner-login?registered=1");
+      router.replace("/onboarding");
     } catch { setError("ارتباط با سرور برقرار نشد."); }
     finally { setBusy(false); }
   }
