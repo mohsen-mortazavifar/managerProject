@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getSqlPool, sql } from "@/lib/db";
 import { createAccessToken, JWT_TTL_SECONDS } from "@/lib/auth/jwt";
-import { hashOtp, normalizeMobile, safeCompareOtpHash } from "@/lib/auth/otp";
+import { normalizeMobile, safeCompareOtpHash } from "@/lib/auth/otp";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
