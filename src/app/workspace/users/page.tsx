@@ -9,7 +9,7 @@ type Member = {
   isOwner: boolean; isActive: boolean; joinedAt: string | null; roles: string[];
 };
 type Role = { roleId: string; name: string; description: string };
-type ResponseData = { error?: string; message?: string; members?: Member[]; roles?: Role[] };
+type Invitation = { invitationId: string; roleName: string; expiresAt: string; acceptedAt: string | null; revokedAt: string | null; createdAt: string };\ntype ResponseData = { error?: string; message?: string; members?: Member[]; roles?: Role[]; invitations?: Invitation[]; inviteUrl?: string };
 
 const roleLabels: Record<string, string> = {
   TenantOwner: "مالک کسب‌وکار",
@@ -27,7 +27,7 @@ export default function WorkspaceUsersPage() {
   const [saving, setSaving] = useState(false);
   const [changingId, setChangingId] = useState("");
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState("");\n  const [invitations, setInvitations] = useState<Invitation[]>([]);\n  const [inviteUrl, setInviteUrl] = useState("");\n  const [inviteBusy, setInviteBusy] = useState(false);
 
   const load = useCallback(async () => {
     const token = sessionStorage.getItem("repairMasterAccessToken");
@@ -76,6 +76,41 @@ export default function WorkspaceUsersPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "افزودن کاربر انجام نشد.");
     } finally { setSaving(false); }
+  }
+
+  async function createInvitation() {
+    const token = sessionStorage.getItem("repairMasterAccessToken");
+    if (!token) { router.replace("/owner-login"); return; }
+    setInviteBusy(true); setError(""); setNotice(""); setInviteUrl("");
+    try {
+      const response = await fetch("/api/workspace/invitations", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ roleName }),
+      });
+      const result = await response.json() as ResponseData;
+      if (!response.ok || !result.inviteUrl) throw new Error(result.error || "ایجاد دعوت‌نامه انجام نشد.");
+      setInviteUrl(result.inviteUrl);
+      setNotice(result.message || "دعوت‌نامه ایجاد شد.");
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "ایجاد دعوت‌نامه انجام نشد."); }
+    finally { setInviteBusy(false); }
+  }
+
+  async function revokeInvitation(invitationId: string) {
+    const token = sessionStorage.getItem("repairMasterAccessToken");
+    if (!token) { router.replace("/owner-login"); return; }
+    if (!window.confirm("این دعوت‌نامه لغو شود؟")) return;
+    try {
+      const response = await fetch("/api/workspace/invitations", {
+        method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ invitationId }),
+      });
+      const result = await response.json() as ResponseData;
+      if (!response.ok) throw new Error(result.error || "لغو دعوت‌نامه انجام نشد.");
+      setNotice(result.message || "دعوت‌نامه لغو شد.");
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "لغو دعوت‌نامه انجام نشد."); }
   }
 
   async function toggleMember(member: Member) {
@@ -130,18 +165,26 @@ export default function WorkspaceUsersPage() {
         {notice && <div className="users-notice" role="status">{notice}</div>}
 
         <section className="users-panel">
-          <div className="users-panel-heading"><span><Plus size={19} /></span><div><h2>افزودن عضو</h2><p>فرد باید قبلاً با شماره موبایل خود ثبت‌نام و شماره‌اش را تأیید کرده باشد.</p></div></div>
-          <form className="users-add-form" onSubmit={addMember}>
-            <label>شماره موبایل
-              <input value={mobile} onChange={(e) => setMobile(e.target.value)} inputMode="tel" autoComplete="tel" placeholder="مثلاً 09123456789" required />
-            </label>
+          <div className="users-panel-heading"><span><Plus size={19} /></span><div><h2>دعوت عضو جدید</h2><p>یک لینک اختصاصی بسازید و برای فرد ارسال کنید. عضویت فقط پس از تأیید پیامک فعال می‌شود.</p></div></div>
+          <div className="users-add-form">
             <label>نقش کاربر
               <select value={roleName} onChange={(e) => setRoleName(e.target.value)}>
                 {roles.map((role) => <option key={role.roleId} value={role.name}>{roleLabels[role.name] || role.name}</option>)}
               </select>
             </label>
-            <button className="users-primary" type="submit" disabled={saving}><Plus size={16} />{saving ? "در حال افزودن..." : "افزودن به تیم"}</button>
-          </form>
+            <button className="users-primary" type="button" onClick={() => void createInvitation()} disabled={inviteBusy}><Plus size={16} />{inviteBusy ? "در حال ساخت..." : "ایجاد لینک دعوت"}</button>
+          </div>
+          {inviteUrl && <div className="users-invite-link"><label>لینک دعوت (اعتبار ۷ روز)</label><input readOnly value={inviteUrl} dir="ltr" onFocus={(e) => e.currentTarget.select()} /><button type="button" className="users-primary" onClick={() => { void navigator.clipboard.writeText(inviteUrl).then(() => setNotice("لینک دعوت کپی شد.")); }}>کپی لینک</button></div>}
+        </section>
+
+        <section className="users-panel">
+          <div className="users-list-heading"><div className="users-panel-heading"><span><ShieldCheck size={19} /></span><div><h2>دعوت‌نامه‌ها</h2><p>دعوت‌های ایجادشده و وضعیت آن‌ها</p></div></div><span className="users-count">{invitations.length} دعوت</span></div>
+          {invitations.length === 0 ? <div className="users-empty">دعوت‌نامه‌ای ایجاد نشده است.</div> : <div className="users-table-wrap"><table className="users-table"><thead><tr><th>نقش</th><th>ایجاد</th><th>انقضا</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>
+            {invitations.map((invite) => {
+              const status = invite.acceptedAt ? "پذیرفته‌شده" : invite.revokedAt ? "لغوشده" : new Date(invite.expiresAt).getTime() <= Date.now() ? "منقضی‌شده" : "در انتظار";
+              return <tr key={invite.invitationId}><td>{roleLabels[invite.roleName] || invite.roleName}</td><td>{new Date(invite.createdAt).toLocaleDateString("fa-IR")}</td><td>{new Date(invite.expiresAt).toLocaleDateString("fa-IR")}</td><td>{status}</td><td>{!invite.acceptedAt && !invite.revokedAt && status === "در انتظار" && <button className="users-toggle users-toggle-off" onClick={() => void revokeInvitation(invite.invitationId)}>لغو دعوت</button>}</td></tr>;
+            })}
+          </tbody></table></div>}
         </section>
 
         <section className="users-panel">
