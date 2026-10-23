@@ -22,11 +22,13 @@ export async function GET(request: Request) {
       .input("userId", sql.BigInt, auth.user.userId)
       .query(`
         SELECT TOP (1)
-          t.TenantId, t.Name, t.Code, t.Status AS TenantStatus,
+          u.FullName AS OwnerFullName, u.Mobile AS OwnerMobile, u.Email AS OwnerEmail,
+          t.TenantId, t.Name, t.Code, t.Status AS TenantStatus, t.CreatedAt AS TenantCreatedAt,
           td.DatabaseName, td.IsActive AS DatabaseIsActive, td.SchemaVersion,
           pj.Status AS JobStatus, pj.AttemptCount, pj.MaxAttempts,
-          pj.LastErrorCode, pj.CorrelationId, pj.CreatedAt AS JobUpdatedAt
+          pj.LastErrorCode, pj.CorrelationId, pj.UpdatedAt AS JobUpdatedAt
         FROM dbo.TenantUsers tu
+        INNER JOIN dbo.Users u ON u.UserId = tu.UserId AND u.DeletedAt IS NULL
         INNER JOIN dbo.Tenants t ON t.TenantId = tu.TenantId AND t.DeletedAt IS NULL
         LEFT JOIN dbo.TenantDatabases td ON td.TenantId = t.TenantId
         LEFT JOIN dbo.ProvisioningJobs pj ON pj.TenantDatabaseId = td.TenantDatabaseId
@@ -44,11 +46,17 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json({
+      owner: {
+        fullName: row.OwnerFullName == null ? null : String(row.OwnerFullName),
+        mobile: row.OwnerMobile == null ? null : String(row.OwnerMobile),
+        email: row.OwnerEmail == null ? null : String(row.OwnerEmail),
+      },
       tenant: {
         tenantId: String(row.TenantId),
         name: String(row.Name),
         code: String(row.Code),
         status: String(row.TenantStatus),
+        createdAt: row.TenantCreatedAt ?? null,
       },
       database: {
         ready: Boolean(row.DatabaseIsActive),
