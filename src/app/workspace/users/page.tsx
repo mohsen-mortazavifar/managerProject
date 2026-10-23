@@ -95,26 +95,27 @@ export default function WorkspaceUsersPage() {
     } catch (e) { setError(e instanceof Error ? e.message : "لغو دعوت‌نامه انجام نشد."); }
   }
 
-  async function toggleMember(member: Member) {
-    if (member.isOwner) return;
-    const action = member.isActive ? "غیرفعال" : "فعال";
-    if (!window.confirm(`عضویت «${member.fullName}» ${action} شود؟`)) return;
+  async function updateMember(member: Member, change: { isActive?: boolean; roleName?: string }) {
     const token = sessionStorage.getItem("repairMasterAccessToken");
     if (!token) { router.replace("/owner-login"); return; }
+    const actionText = change.roleName ? "نقش عضو تغییر کند؟" : change.isActive ? "عضویت فعال شود؟" : "عضویت غیرفعال شود؟";
+    if (!window.confirm(`برای «${member.fullName}» ${actionText}`)) return;
     setChangingId(member.tenantUserId); setError(""); setNotice("");
     try {
       const response = await fetch("/api/workspace/users", {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ tenantUserId: member.tenantUserId, isActive: !member.isActive }),
+        method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantUserId: member.tenantUserId, ...change }),
       });
       const result = await response.json() as ResponseData;
-      if (!response.ok) throw new Error(result.error || "تغییر وضعیت عضویت انجام نشد.");
-      setNotice(result.message || "وضعیت عضویت تغییر کرد.");
+      if (!response.ok) throw new Error(result.error || "تغییر عضو انجام نشد.");
+      setNotice(result.message || "تغییرات ذخیره شد.");
       await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "تغییر وضعیت عضویت انجام نشد.");
-    } finally { setChangingId(""); }
+    } catch (e) { setError(e instanceof Error ? e.message : "تغییر عضو انجام نشد."); }
+    finally { setChangingId(""); }
+  }
+
+  async function toggleMember(member: Member) {
+    await updateMember(member, { isActive: !member.isActive });
   }
 
   async function logout() {
@@ -179,7 +180,7 @@ export default function WorkspaceUsersPage() {
                 <td dir="ltr" className="users-mobile">{member.mobile || "—"}</td>
                 <td>{member.roles.length ? member.roles.map((r) => roleLabels[r] || r).join("، ") : "بدون نقش"}</td>
                 <td><span className={`users-status ${member.isActive ? "users-status-active" : "users-status-off"}`}>{member.isActive ? "فعال" : "غیرفعال"}</span></td>
-                <td>{member.isOwner ? <span className="users-owner-label">غیرقابل تغییر</span> : <button className={`users-toggle ${member.isActive ? "users-toggle-off" : "users-toggle-on"}`} disabled={changingId === member.tenantUserId} onClick={() => void toggleMember(member)}><UserRoundX size={14} />{changingId === member.tenantUserId ? "در حال ثبت..." : member.isActive ? "غیرفعال‌کردن" : "فعال‌کردن"}</button>}</td>
+                <td>{member.isOwner ? <span className="users-owner-label">غیرقابل تغییر</span> : <div className="users-member-actions"><select aria-label={`نقش ${member.fullName}`} value={member.roles[0] || "TenantUser"} disabled={changingId === member.tenantUserId} onChange={(e) => void updateMember(member, { roleName: e.target.value })}>{roles.filter((r) => ["TenantManager", "TenantUser"].includes(r.name)).map((r) => <option key={r.roleId} value={r.name}>{roleLabels[r.name] || r.name}</option>)}</select><button className={`users-toggle ${member.isActive ? "users-toggle-off" : "users-toggle-on"}`} disabled={changingId === member.tenantUserId} onClick={() => void toggleMember(member)}><UserRoundX size={14} />{changingId === member.tenantUserId ? "در حال ثبت..." : member.isActive ? "غیرفعال‌کردن" : "فعال‌کردن"}</button></div>}</td>
               </tr>)}</tbody>
             </table></div>
           )}
