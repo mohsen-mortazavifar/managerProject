@@ -45,7 +45,7 @@ export async function POST(request: Request) {
       SELECT TOP (1) UserId, IsSystemAdmin, MobileVerifiedAt
       FROM dbo.Users WHERE Mobile = @mobile AND DeletedAt IS NULL;
     `);
-    if (purpose === "login" && (!existing.recordset[0] || !existing.recordset[0].MobileVerifiedAt || existing.recordset[0].IsSystemAdmin)) {
+    if (purpose === "login" && (!existing.recordset[0] || existing.recordset[0].IsSystemAdmin)) {
       return response({ message: "اگر شماره واجد شرایط باشد، کد ارسال خواهد شد." });
     }
     if (purpose === "register" && existing.recordset[0]) {
