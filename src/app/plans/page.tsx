@@ -37,7 +37,7 @@ export default function PlansPage() {
   finally{setLoading(false);}
  },[router]);
 
- useEffect(()=>{if(token)void loadPlans(token,status);},[token,status,loadPlans]);
+ useEffect(() => { if (!token) return; let cancelled = false; async function fetchPlans() { setLoading(true); setError(""); try { const response = await fetch(`/api/plans?status=${status}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }); const result = await response.json(); if (cancelled) return; if (response.status === 401 || response.status === 403) { sessionStorage.removeItem("repairMasterAccessToken"); router.replace("/login"); return; } if (!response.ok) { setError(result.error || "دریافت پلن‌ها انجام نشد."); return; } setPlans(result.plans); } catch { if (!cancelled) { setError("ارتباط با سرور برقرار نشد."); } } finally { if (!cancelled) { setLoading(false); } } } void fetchPlans(); return () => { cancelled = true; }; }, [token, status, router]);
 
  function openCreate(){setEditing(null);setForm(emptyForm);setError("");setNotice("");setShowForm(true);}
  function openEdit(plan:Plan){setEditing(plan.subscriptionPlanId);setForm({name:plan.name,description:plan.description,price:String(plan.price),durationDays:String(plan.durationDays),maxBranches:String(plan.maxBranches),maxUsers:String(plan.maxUsers),maxSmsPerMonth:String(plan.maxSmsPerMonth),isActive:plan.isActive});setError("");setNotice("");setShowForm(true);}

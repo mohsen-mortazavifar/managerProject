@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { ReactNode } from "react";
 import { iranYekan } from "@/lib/fonts";
 import "./globals.css";
 
