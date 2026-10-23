@@ -65,11 +65,11 @@ export async function POST(request: Request) {
       `);
 
     const user = result.recordset[0];
-    const passwordIsValid = user
+    const passwordIsValid = user && Boolean(user.IsSystemAdmin)
       ? await verifyPassword(password, String(user.PasswordHash || ""))
       : false;
 
-    if (!user || !passwordIsValid || !Boolean(user.IsActive)) {
+    if (!user || !passwordIsValid || !Boolean(user.IsActive) || !Boolean(user.IsSystemAdmin)) {
       await recordLoginAttempt(normalizedEmail, clientIp, false, request);
       return NextResponse.json(
         { error: "ایمیل یا رمز عبور صحیح نیست." },
