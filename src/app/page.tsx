@@ -18,6 +18,7 @@ import {
   Search,
   Settings2,
   ShieldCheck,
+  ShoppingCart,
   Users,
   X,
 } from "lucide-react";
@@ -28,6 +29,7 @@ const navigation = [
   { label: "کاربران و نقش‌ها", icon: Users },
   { label: "پلن‌ها و اشتراک‌ها", icon: CreditCard },
   { label: "بررسی پرداخت‌ها", icon: CheckCircle2 },
+  { label: "سفارش پلن", icon: ShoppingCart },
   { label: "پایگاه‌های داده", icon: Database },
   { label: "گزارش رویدادها", icon: FileClock },
   { label: "سلامت سامانه", icon: Activity },
@@ -105,6 +107,7 @@ export default function Home() {
                   if (item.label === "کسب‌وکارها") { router.push("/tenants"); setMenuOpen(false); return; }
                   if (item.label === "پلن‌ها و اشتراک‌ها") { router.push("/plans"); setMenuOpen(false); return; }
                   if (item.label === "بررسی پرداخت‌ها") { router.push("/payments"); setMenuOpen(false); return; }
+                  if (item.label === "سفارش پلن") { router.push("/subscription"); setMenuOpen(false); return; }
                   if (item.label === "سلامت سامانه") { router.push("/health"); setMenuOpen(false); return; }
                   if (!item.active) { setSearch(item.label); } else { setSearch(""); }
                   setMenuOpen(false);
