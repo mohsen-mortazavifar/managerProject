@@ -9,7 +9,8 @@ type Member = {
   isOwner: boolean; isActive: boolean; joinedAt: string | null; roles: string[];
 };
 type Role = { roleId: string; name: string; description: string };
-type Invitation = { invitationId: string; roleName: string; expiresAt: string; acceptedAt: string | null; revokedAt: string | null; createdAt: string };\ntype ResponseData = { error?: string; message?: string; members?: Member[]; roles?: Role[]; invitations?: Invitation[]; inviteUrl?: string };
+type Invitation = { invitationId: string; roleName: string; expiresAt: string; acceptedAt: string | null; revokedAt: string | null; createdAt: string };
+type ResponseData = { error?: string; message?: string; members?: Member[]; roles?: Role[]; invitations?: Invitation[]; inviteUrl?: string };
 
 const roleLabels: Record<string, string> = {
   TenantOwner: "مالک کسب‌وکار",
