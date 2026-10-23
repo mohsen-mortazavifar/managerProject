@@ -54,7 +54,10 @@ export default function WorkspacePage() {
     }
   }, [router]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void refresh(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [refresh]);
 
   async function logout() {
     const token = sessionStorage.getItem("repairMasterAccessToken");
@@ -98,6 +101,9 @@ export default function WorkspacePage() {
         <section className="workspace-module-grid">
           <article className="workspace-module-card workspace-module-card-active">
             <span><Building2 size={21} /></span><div><h3>اطلاعات کسب‌وکار</h3><p>وضعیت و مشخصات فضای کاری فعلی</p></div><small>آماده</small>
+          </article>
+          <article className="workspace-module-card">
+            <span><CircleUserRound size={21} /></span><div><h3>کاربران و دسترسی‌ها</h3><p>مدیریت اعضا و نقش‌های دسترسی</p></div><small>مرحله بعد</small>
           </article>
           <article className="workspace-module-card">
             <span><Wrench size={21} /></span><div><h3>خدمات و تعمیرات</h3><p>ثبت و پیگیری سفارش‌های تعمیر</p></div><small>در نقشه راه</small>
