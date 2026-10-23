@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getSqlPool, sql } from "@/lib/db";
 import { generateOtp, hashOtp, normalizeMobile, OTP_MAX_ATTEMPTS, OTP_RESEND_COOLDOWN_SECONDS, OTP_TTL_SECONDS, sendOtpSms } from "@/lib/auth/otp";
@@ -39,19 +39,8 @@ export async function POST(request: Request) {
     const clientIp = getLoginClientIp(request);
     const ipHash = clientIp ? digest(clientIp) : null;
 
-    // Always return the same public response for valid login requests, whether
-    // or not an account exists. Registration conflicts are intentionally opaque too.
-    const existing = await pool.request().input("mobile", sql.NVarChar(40), mobile).query(`
-      SELECT TOP (1) UserId, IsSystemAdmin, MobileVerifiedAt
-      FROM dbo.Users WHERE Mobile = @mobile AND DeletedAt IS NULL;
-    `);
-    if (purpose === "login" && (!existing.recordset[0] || existing.recordset[0].IsSystemAdmin)) {
-      return response({ message: "اگر شماره واجد شرایط باشد، کد ارسال خواهد شد." });
-    }
-    if (purpose === "register" && existing.recordset[0]) {
-      return response({ message: "اگر شماره واجد شرایط باشد، کد ارسال خواهد شد." });
-    }
-
+    // Keep request responses uniform for existing and non-existing accounts.
+    // Account eligibility is checked only after a challenge is verified.
     const limits = await pool.request().input("mobile", sql.NVarChar(40), mobile).input("ipHash", sql.VarBinary(32), ipHash).query(`
       SELECT
         (SELECT COUNT_BIG(*) FROM dbo.OwnerOtpChallenges
@@ -68,7 +57,7 @@ export async function POST(request: Request) {
       return response({ message: "اگر شماره واجد شرایط باشد، کد ارسال خواهد شد." });
     }
 
-    const challengeId = crypto.randomUUID();
+    const challengeId = randomUUID();
     const otp = generateOtp();
     await pool.request()
       .input("challengeId", sql.UniqueIdentifier, challengeId)
