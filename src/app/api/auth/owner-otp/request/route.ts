@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   if (typeof input.mobile !== "string") return response({ error: "شماره موبایل معتبر نیست." }, 400);
 
   let mobile: string;
-  try { mobile = normalizeMobile(input.mobile); } catch { return response({ error: "شماره موبایل را با کد کشور وارد کنید؛ مانند ‎+989121234567." }, 400); }
+  try { mobile = normalizeMobile(input.mobile); } catch { return response({ error: "شماره موبایل را با کد کشور وارد کنید؛ مانند ‎09121234567." }, 400); }
 
   const purpose = input.purpose === "login" ? "login" : input.purpose === "register" ? "register" : null;
   if (!purpose) return response({ error: "هدف درخواست نامعتبر است." }, 400);
@@ -39,8 +39,28 @@ export async function POST(request: Request) {
     const clientIp = getLoginClientIp(request);
     const ipHash = clientIp ? digest(clientIp) : null;
 
+
+    if (purpose === "register") {
+
+
+      const existingUser = await pool.request()
+        .input("mobile", sql.NVarChar(40), mobile)
+        .query(`
+      SELECT TOP (1) UserId
+      FROM dbo.Users
+      WHERE Mobile = @mobile
+        AND DeletedAt IS NULL;
+    `);
+
+      if (existingUser.recordset.length > 0) {
+        return response(
+          { error: "این شماره قبلاً ثبت شده است؛ لطفاً وارد شوید." },
+          409
+        );
+      }
+    }
     // Keep request responses uniform for existing and non-existing accounts.
-    // Account eligibility is checked only after a challenge is verified.
+
     const limits = await pool.request().input("mobile", sql.NVarChar(40), mobile).input("ipHash", sql.VarBinary(32), ipHash).query(`
       SELECT
         (SELECT COUNT_BIG(*) FROM dbo.OwnerOtpChallenges
@@ -57,7 +77,7 @@ export async function POST(request: Request) {
       return response({ message: "اگر شماره واجد شرایط باشد، کد ارسال خواهد شد." });
     }
 
-    const challengeId = randomUUID();
+    const challengeId = randomUUID().toLowerCase();
     const otp = generateOtp();
     await pool.request()
       .input("challengeId", sql.UniqueIdentifier, challengeId)

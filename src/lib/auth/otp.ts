@@ -13,14 +13,22 @@ function getOtpSecret(): string {
 }
 
 export function normalizeMobile(value: string): string {
-  // Keep international numbers in E.164-like form. Country-specific conversion
-  // should be done explicitly by the UI or a later phone-number library.
-  const trimmed = value.trim();
-  const normalized = trimmed.replace(/[\s()\-]/g, "");
-  if (!/^\+[1-9]\d{7,14}$/.test(normalized)) {
+  let mobile = value.trim().replace(/[\s()\-]/g, "");
+
+  // 0912... → +98912...
+  if (/^09\d{9}$/.test(mobile)) {
+    mobile = `+98${mobile.slice(1)}`;
+  }
+  // 98912... → +98912...
+  else if (/^989\d{9}$/.test(mobile)) {
+    mobile = `+${mobile}`;
+  }
+
+  if (!/^\+989\d{9}$/.test(mobile)) {
     throw new Error("INVALID_MOBILE");
   }
-  return normalized;
+
+  return mobile;
 }
 
 export function generateOtp(): string {

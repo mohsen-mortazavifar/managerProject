@@ -58,7 +58,7 @@ export default function OwnerLoginPage() {
         {!challengeId ? (
           <form className="auth-form" onSubmit={requestCode}>
             <label htmlFor="mobile"><Phone size={15} /> شماره موبایل</label>
-            <input id="mobile" type="tel" autoComplete="tel" required maxLength={20} value={mobile} onChange={e => setMobile(e.target.value)} placeholder="+989121234567" dir="ltr" />
+            <input id="mobile" type="tel" autoComplete="tel" required maxLength={20} value={mobile} onChange={e => setMobile(e.target.value)} placeholder="09121234567" dir="ltr" />
             {notice && <p className="auth-success" role="status">{notice}</p>}
             {error && <p className="auth-error" role="alert">{error}</p>}
             <button className="auth-submit" disabled={busy} type="submit">{busy ? <LoaderCircle size={17} className="animate-spin" /> : <Phone size={17} />}{busy ? "در حال ارسال..." : "دریافت کد ورود"}</button>

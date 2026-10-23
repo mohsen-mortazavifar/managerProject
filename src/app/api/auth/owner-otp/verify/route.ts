@@ -17,8 +17,8 @@ export async function POST(request: Request) {
 
   const input = body as { challengeId?: unknown; mobile?: unknown; code?: unknown };
   if (typeof input.challengeId !== "string" ||
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.challengeId) ||
-      typeof input.mobile !== "string" || typeof input.code !== "string" || !/^\d{6}$/.test(input.code)) {
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.challengeId) ||
+    typeof input.mobile !== "string" || typeof input.code !== "string" || !/^\d{6}$/.test(input.code)) {
     return respond({ error: "کد یا اطلاعات درخواست معتبر نیست." }, 400);
   }
 
@@ -41,12 +41,13 @@ export async function POST(request: Request) {
         `);
       const challenge = found.recordset[0];
       if (!challenge || challenge.ConsumedAt || new Date(challenge.ExpiresAt).getTime() <= Date.now() ||
-          Number(challenge.Attempts) >= Number(challenge.MaxAttempts)) {
+        Number(challenge.Attempts) >= Number(challenge.MaxAttempts)) {
         await tx.rollback();
         return respond({ error: "کد معتبر نیست یا منقضی شده است." }, 400);
       }
 
-      const matches = safeCompareOtpHash(Buffer.from(challenge.OtpHash), String(challenge.ChallengeId), input.code);
+      const matches = safeCompareOtpHash(Buffer.from(challenge.OtpHash), String(challenge.ChallengeId).toLocaleLowerCase(), input.code);
+
       if (!matches) {
         await new sql.Request(tx)
           .input("challengeId", sql.UniqueIdentifier, input.challengeId)
@@ -168,7 +169,10 @@ export async function POST(request: Request) {
           provisioning: { jobId: String(job.JobId), correlationId: String(job.CorrelationId), status: "Queued" },
         }, 201);
       }
-
+      console.log("[OTP ACCOUNT CHECK]", {
+        purpose: challenge.Purpose,
+        mobile,
+      });
       if (challenge.Purpose === "login") {
         const account = await new sql.Request(tx)
           .input("mobile", sql.NVarChar(40), mobile)

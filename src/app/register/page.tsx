@@ -65,8 +65,8 @@ export default function OwnerRegisterPage() {
             <label htmlFor="fullName"><UserRound size={15} /> نام کامل</label>
             <input id="fullName" autoComplete="name" required maxLength={200} value={fullName} onChange={e => setFullName(e.target.value)} placeholder="نام و نام خانوادگی" />
             <label htmlFor="mobile"><Phone size={15} /> شماره موبایل با کد کشور</label>
-            <input id="mobile" type="tel" autoComplete="tel" required maxLength={20} value={mobile} onChange={e => setMobile(e.target.value)} placeholder="+989121234567" dir="ltr" />
-            <small className="auth-footnote">شماره را با + و کد کشور وارد کنید.</small>
+            <input id="mobile" type="tel" autoComplete="tel" required maxLength={20} value={mobile} onChange={e => setMobile(e.target.value)} placeholder="09121234567" dir="ltr" />
+            <small className="auth-footnote">شماره را وارد کنید.</small>
             <label htmlFor="businessName"><Building2 size={15} /> نام کسب‌وکار</label>
             <input id="businessName" required maxLength={200} value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="مثلاً تعمیرات مرکزی" />
             {error && <p className="auth-error" role="alert">{error}</p>}
