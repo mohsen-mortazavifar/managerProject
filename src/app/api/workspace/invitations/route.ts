@@ -35,7 +35,7 @@ export async function GET(request: Request) {
     `);
     return json({ invitations: result.recordset.map((r) => ({
       invitationId: String(r.InvitationId), roleName: String(r.RoleName),
-      expiresAt: r.ExpiresAt, acceptedAt: r.AcceptedAt, revokedAt: r.RevokedAt, createdAt: r.CreatedAt
+      expiresAt: r.ExpiresAt, acceptedAt: r.AcceptedAt, revokedAt: r.RevokedAt, createdAt: r.CreatedAt, isExpired: new Date(r.ExpiresAt).getTime() <= Date.now()
     })) });
   } catch { return json({ error: "دریافت دعوت‌نامه‌ها انجام نشد." }, 503); }
 }
