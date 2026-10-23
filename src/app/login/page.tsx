@@ -52,6 +52,7 @@ export default function LoginPage() {
         </form>
         <div className="auth-security"><ShieldCheck size={16} /><span>اتصال امن با توکن دسترسی کوتاه‌مدت</span></div>
         <p className="auth-footnote">برای ورود موفق، حساب باید در جدول Users فعال و دارای دسترسی مدیر سیستم باشد.</p>
+        <p className="auth-footnote">مالک کسب‌وکار هستید؟ <a href="/owner-login">ورود با موبایل</a> · <a href="/register">ثبت‌نام مالک</a></p>
       </section>
     </main>
   );
