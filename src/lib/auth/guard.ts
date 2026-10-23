@@ -23,7 +23,7 @@ export async function requireAuth(request: Request): Promise<AuthGuardResult> {
     // Re-check the account on every protected request so disabled/deleted users
     // do not retain access until the JWT expires.
     const pool = await getSqlPool();
-    const tokenHash = hashAccessToken(bearerToken!);
+    const tokenHash = hashAccessToken(bearerToken);
     const revoked = await pool.request()
       .input("tokenHash", sql.VarBinary(32), tokenHash)
       .query(`
@@ -63,16 +63,19 @@ export async function requireAuth(request: Request): Promise<AuthGuardResult> {
 
     const isSystemAdmin = Boolean(user.IsSystemAdmin);
     const pathname = new URL(request.url).pathname;
+    // Authentication and account/workspace setup must remain available before
+    // the first subscription is purchased or after it expires.
     const subscriptionExemptPaths = new Set([
       "/api/auth/me",
       "/api/auth/logout",
       "/api/available-plans",
       "/api/subscription-orders",
+      "/api/tenants/current-status",
     ]);
 
     // System administrators manage the platform independently of customer plans.
-    // Tenant users may still view their account and manage subscription orders
-    // when their subscription has expired; other protected APIs require an active plan.
+    // Tenant users can access account, onboarding status, plan catalogue and orders
+    // without an active subscription. Business APIs remain subscription-gated.
     if (!isSystemAdmin && !subscriptionExemptPaths.has(pathname) && !pathname.startsWith("/api/admin/")) {
       const entitlement = await pool.request()
         .input("userId", sql.BigInt, user.UserId)
