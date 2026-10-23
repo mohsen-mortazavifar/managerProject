@@ -25,7 +25,7 @@ export default function OwnerLoginPage() {
         body: JSON.stringify({ purpose: "login", mobile }),
       });
       const result = await response.json() as RequestResult;
-      if (!response.ok || !result.challengeId) { setError(result.error || "اگر شماره واجد شرایط باشد، کد ارسال می‌شود. شماره و تنظیمات پیامک را بررسی کنید."); return; }
+      if (!response.ok || !result.challengeId) {  setError(result.error ||   "کد ارسال نشد. چند دقیقه دیگر مجدد تلاش نمائید."); return; }
       setChallengeId(result.challengeId);
       setNotice("کد تأیید ارسال شد. تا ۵ دقیقه فرصت دارید.");
     } catch { setError("ارتباط با سرور برقرار نشد."); }

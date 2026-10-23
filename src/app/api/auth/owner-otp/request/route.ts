@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   if (typeof input.mobile !== "string") return response({ error: "شماره موبایل معتبر نیست." }, 400);
 
   let mobile: string;
-  try { mobile = normalizeMobile(input.mobile); } catch { return response({ error: "شماره موبایل را با کد کشور وارد کنید؛ مانند ‎09121234567." }, 400); }
+  try { mobile = normalizeMobile(input.mobile); } catch { return response({ error: "شماره موبایل را با دقت وارد کنید؛ مانند 09121234567." }, 400); }
 
   const purpose = input.purpose === "login" ? "login" : input.purpose === "register" ? "register" : null;
   if (!purpose) return response({ error: "هدف درخواست نامعتبر است." }, 400);
@@ -39,6 +39,24 @@ export async function POST(request: Request) {
     const clientIp = getLoginClientIp(request);
     const ipHash = clientIp ? digest(clientIp) : null;
 
+
+    if (purpose === "login") {
+  const existingUser = await pool.request()
+    .input("mobile", sql.NVarChar(40), mobile)
+    .query(`
+      SELECT TOP (1) UserId
+      FROM dbo.Users
+      WHERE Mobile = @mobile
+        AND DeletedAt IS NULL;
+    `);
+
+  if (existingUser.recordset.length === 0) {
+    return response(
+      { error: "این شماره موبایل در سیستم ثبت نشده است. ابتدا ثبت‌نام کنید." },
+      404
+    );
+  }
+}
 
     if (purpose === "register") {
 
@@ -74,7 +92,7 @@ export async function POST(request: Request) {
     const row = limits.recordset[0];
     if (Number(row?.MobileCount ?? 0) >= 5 || Number(row?.IpCount ?? 0) >= 20 ||
       (row?.LastCreatedAt && new Date(row.LastCreatedAt).getTime() > Date.now() - OTP_RESEND_COOLDOWN_SECONDS * 1000)) {
-      return response({ message: "اگر شماره واجد شرایط باشد، کد ارسال خواهد شد." });
+      return response({ message: "ورود با  کد نامعتبر. لطفا چند دقیقه دیگر تلاش نمائید" });
     }
 
     const challengeId = randomUUID().toLowerCase();
