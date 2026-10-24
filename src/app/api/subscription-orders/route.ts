@@ -58,10 +58,11 @@ export async function POST(request:Request){
   const result=await pool.request().input("tenantId",sql.BigInt,tenant.TenantId).input("planId",sql.BigInt,planId).input("userId",sql.BigInt,auth.user.userId).query(`
    SET XACT_ABORT ON;
    BEGIN TRANSACTION;
-   DECLARE @Price DECIMAL(18,2),@DurationDays INT,@IsTrial BIT,@SubscriptionId BIGINT,@PaymentTransactionId BIGINT,@TrialRequestId BIGINT,@HasActive BIT,@HasReserved BIT;
-   SELECT @Price=Price,@DurationDays=DurationDays,@IsTrial=IsTrial FROM dbo.SubscriptionPlans WITH (UPDLOCK,HOLDLOCK)
+   DECLARE @Price DECIMAL(18,2),@DurationDays INT,@IsTrial BIT,@DiscountPercent DECIMAL(5,2),@SubscriptionId BIGINT,@PaymentTransactionId BIGINT,@TrialRequestId BIGINT,@HasActive BIT,@HasReserved BIT;
+   SELECT @Price=CASE WHEN IsTrial=1 THEN 0 ELSE ROUND(Price*(1-DiscountPercent/100.0),2) END,@DurationDays=DurationDays,@IsTrial=IsTrial,@DiscountPercent=DiscountPercent FROM dbo.SubscriptionPlans WITH (UPDLOCK,HOLDLOCK)
    WHERE SubscriptionPlanId=@planId AND IsActive=1;
    IF @Price IS NULL THROW 51001,'PLAN_NOT_AVAILABLE',1;
+   IF @IsTrial=0 AND @Price<=0 THROW 51007,'ZERO_PRICE_PLAN_MUST_BE_TRIAL',1;
    SELECT @HasActive=CASE WHEN EXISTS(SELECT 1 FROM dbo.Subscriptions WITH (UPDLOCK,HOLDLOCK) WHERE TenantId=@tenantId AND Status=N'Active' AND EndsAt>SYSUTCDATETIME()) THEN 1 ELSE 0 END;
    SELECT @HasReserved=CASE WHEN EXISTS(SELECT 1 FROM dbo.Subscriptions WITH (UPDLOCK,HOLDLOCK) WHERE TenantId=@tenantId AND Status=N'Reserved') THEN 1 ELSE 0 END;
    IF @HasReserved=1 THROW 51005,'RESERVED_SUBSCRIPTION_EXISTS',1;
@@ -81,7 +82,6 @@ export async function POST(request:Request){
    END
    ELSE
    BEGIN
-    IF @Price<=0 THROW 51007,'ZERO_PRICE_PLAN_MUST_BE_TRIAL',1;
     INSERT INTO dbo.Subscriptions(TenantId,SubscriptionPlanId,Status,StartsAt,EndsAt,PriceAtSubscription,CreatedAt,UpdatedAt)
     VALUES(@tenantId,@planId,N'PendingPayment',SYSUTCDATETIME(),DATEADD(day,@DurationDays,SYSUTCDATETIME()),@Price,SYSUTCDATETIME(),SYSUTCDATETIME());
     SET @SubscriptionId=SCOPE_IDENTITY();
