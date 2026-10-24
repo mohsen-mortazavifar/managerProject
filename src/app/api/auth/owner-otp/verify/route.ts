@@ -177,13 +177,18 @@ export async function POST(request: Request) {
         const account = await new sql.Request(tx)
           .input("mobile", sql.NVarChar(40), mobile)
           .query(`
-            SELECT TOP (1) UserId, Email, FullName, IsActive, IsSystemAdmin, IsPlatformUser
-            FROM dbo.Users WHERE Mobile = @mobile AND DeletedAt IS NULL;
+            SELECT TOP (1) u.UserId, u.Email, u.FullName, u.IsActive, u.IsSystemAdmin, u.IsPlatformUser,
+              CASE WHEN EXISTS (
+                SELECT 1 FROM dbo.TenantUsers tu
+                WHERE tu.UserId = u.UserId AND tu.IsOwner = 1 AND tu.IsActive = 1
+              ) THEN 1 ELSE 0 END AS IsBusinessOwner
+            FROM dbo.Users u WHERE u.Mobile = @mobile AND u.DeletedAt IS NULL;
           `);
         const userRow = account.recordset[0];
-        if (!userRow || !Boolean(userRow.IsActive) || Boolean(userRow.IsSystemAdmin)) {
+        if (!userRow || !Boolean(userRow.IsActive) || Boolean(userRow.IsSystemAdmin) ||
+            (!Boolean(userRow.IsPlatformUser) && !Boolean(userRow.IsBusinessOwner))) {
           await tx.commit();
-          return respond({ error: "کد معتبر نیست یا منقضی شده است." }, 401);
+          return respond({ error: "همکاران باید با شماره موبایل و رمز عبور وارد شوند. اگر رمز ندارید، از مالک کسب‌وکار بخواهید آن را تعیین کند." }, 403);
         }
         const user = { userId: String(userRow.UserId), email: String(userRow.Email || ""), fullName: String(userRow.FullName), isSystemAdmin: false, isPlatformUser: Boolean(userRow.IsPlatformUser) };
         const accessToken = createAccessToken(user);
