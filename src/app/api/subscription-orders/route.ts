@@ -20,6 +20,7 @@ async function getOwnerTenant(userId:string){
 
 export async function GET(request:Request){
  const auth=await requireAuth(request);if(!auth.ok)return auth.response;
+ if(auth.user.isPlatformUser)return fail("این بخش مخصوص مالک کسب‌وکار است.",403);
  if(auth.user.isSystemAdmin)return fail("این صفحه برای مالک کسب‌وکار است.",403);
  try{
   const pool=await getSqlPool(),tenant=await getOwnerTenant(auth.user.userId);
@@ -47,6 +48,7 @@ export async function GET(request:Request){
 
 export async function POST(request:Request){
  const auth=await requireAuth(request);if(!auth.ok)return auth.response;
+ if(auth.user.isPlatformUser)return fail("این بخش مخصوص مالک کسب‌وکار است.",403);
  if(auth.user.isSystemAdmin)return fail("مدیر سیستم نمی‌تواند از این مسیر درخواست اشتراک ثبت کند.",403);
  let body:unknown;try{body=await request.json();}catch{return fail("بدنه درخواست معتبر نیست.",400);}
  const planId=(body as {subscriptionPlanId?:unknown}|null)?.subscriptionPlanId;
