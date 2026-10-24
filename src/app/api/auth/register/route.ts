@@ -123,9 +123,9 @@ export async function POST(request: Request) {
         .input("fullName", sql.NVarChar(200), fullName)
         .query(`
           INSERT INTO dbo.Users
-            (Email, Mobile, PasswordHash, FullName, IsActive, IsSystemAdmin, CreatedAt, UpdatedAt)
+            (Email, Mobile, PasswordHash, FullName, IsActive, IsSystemAdmin, IsPlatformUser, CreatedAt, UpdatedAt)
           OUTPUT INSERTED.UserId
-          VALUES (@email, @mobile, @passwordHash, @fullName, 1, 0, SYSUTCDATETIME(), SYSUTCDATETIME());
+          VALUES (@email, @mobile, @passwordHash, @fullName, 1, 0, 0, SYSUTCDATETIME(), SYSUTCDATETIME());
         `);
       const userId = userResult.recordset[0]?.UserId;
       if (!userId) throw new Error("USER_INSERT_FAILED");

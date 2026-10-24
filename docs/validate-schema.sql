@@ -38,11 +38,13 @@ VALUES
   (N'SubscriptionPlans', N'Name'),
   (N'SubscriptionPlans', N'Description'),
   (N'SubscriptionPlans', N'Price'),
+  (N'SubscriptionPlans', N'DurationDays'),
   (N'SubscriptionPlans', N'MaxBranches'),
   (N'SubscriptionPlans', N'MaxUsers'),
   (N'SubscriptionPlans', N'MaxSmsPerMonth'),
   (N'SubscriptionPlans', N'IsActive'),
   (N'SubscriptionPlans', N'CreatedAt'),
+  (N'SubscriptionPlans', N'UpdatedAt'),
 
   (N'Subscriptions', N'SubscriptionId'),
   (N'Subscriptions', N'TenantId'),

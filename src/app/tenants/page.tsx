@@ -157,8 +157,8 @@ export default function TenantsPage() {
           ) : (
             <table className="tenant-table">
               <thead><tr><th>نام کسب‌وکار</th><th>کد</th><th>ایمیل تماس</th><th>شماره تماس</th><th>وضعیت</th></tr></thead>
-              <tbody>{tenants.map((tenant) => <tr key={tenant.tenantId}>
-                <td><strong>{tenant.name}</strong><small>شناسه: {tenant.tenantId}</small></td>
+              <tbody>{tenants.map((tenant) => <tr key={tenant.tenantId} onClick={() => router.push("/tenants/" + encodeURIComponent(tenant.tenantId))} style={{ cursor: "pointer" }} title="مشاهده پرونده کسب‌وکار">
+                <td><strong>{tenant.name}</strong><small>شناسه: {tenant.tenantId} · مشاهده جزئیات ←</small></td>
                 <td><code>{tenant.code}</code></td><td>{tenant.contactEmail || "—"}</td><td>{tenant.contactMobile || "—"}</td>
                 <td><span className={`tenant-status ${tenant.status === "Active" ? "is-active" : tenant.status === "Suspended" ? "is-suspended" : "is-pending"}`}>{statusLabels[tenant.status] || tenant.status}</span></td>
               </tr>)}</tbody>
