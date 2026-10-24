@@ -77,6 +77,69 @@ export async function requireAuth(request: Request): Promise<AuthGuardResult> {
     // Tenant users can access account, onboarding status, plan catalogue and orders
     // without an active subscription. Business APIs remain subscription-gated.
     if (!isSystemAdmin && !subscriptionExemptPaths.has(pathname) && !pathname.startsWith("/api/admin/")) {
+      // Apply subscription lifecycle transitions on demand before checking access:
+      // expire ended subscriptions and activate a reserved subscription whose
+      // scheduled start time has arrived. The transaction and row locks prevent
+      // concurrent requests from activating the same tenant's reservation twice.
+      await pool.request()
+        .input("userId", sql.BigInt, user.UserId)
+        .query(`
+          SET XACT_ABORT ON;
+          BEGIN TRANSACTION;
+          DECLARE @Now DATETIME2(3) = SYSUTCDATETIME();
+          DECLARE @TenantIds TABLE (TenantId BIGINT PRIMARY KEY);
+
+          INSERT INTO @TenantIds (TenantId)
+          SELECT DISTINCT tu.TenantId
+          FROM dbo.TenantUsers tu
+          INNER JOIN dbo.Tenants t ON t.TenantId = tu.TenantId
+          WHERE tu.UserId = @userId
+            AND tu.IsActive = 1
+            AND t.DeletedAt IS NULL
+            AND t.Status = N'Active';
+
+          UPDATE s WITH (UPDLOCK, HOLDLOCK)
+          SET Status = N'Expired', UpdatedAt = @Now
+          FROM dbo.Subscriptions s
+          INNER JOIN @TenantIds tenants ON tenants.TenantId = s.TenantId
+          WHERE s.Status = N'Active'
+            AND s.EndsAt <= @Now;
+
+          -- A reservation whose entire scheduled term elapsed before the next
+          -- request is marked expired rather than granting an already-ended term.
+          UPDATE s WITH (UPDLOCK, HOLDLOCK)
+          SET Status = N'Expired', UpdatedAt = @Now
+          FROM dbo.Subscriptions s
+          INNER JOIN @TenantIds tenants ON tenants.TenantId = s.TenantId
+          WHERE s.Status = N'Reserved'
+            AND s.EndsAt <= @Now;
+
+          ;WITH ReadyReservations AS (
+            SELECT s.SubscriptionId,
+              ROW_NUMBER() OVER (PARTITION BY s.TenantId ORDER BY s.StartsAt, s.SubscriptionId) AS rn
+            FROM dbo.Subscriptions s WITH (UPDLOCK, HOLDLOCK)
+            INNER JOIN @TenantIds tenants ON tenants.TenantId = s.TenantId
+            WHERE s.Status = N'Reserved'
+              AND s.StartsAt <= @Now
+              AND s.EndsAt > @Now
+              AND NOT EXISTS (
+                SELECT 1
+                FROM dbo.Subscriptions activeSub WITH (UPDLOCK, HOLDLOCK)
+                WHERE activeSub.TenantId = s.TenantId
+                  AND activeSub.Status = N'Active'
+                  AND activeSub.StartsAt <= @Now
+                  AND activeSub.EndsAt > @Now
+              )
+          )
+          UPDATE s
+          SET Status = N'Active', UpdatedAt = @Now
+          FROM dbo.Subscriptions s
+          INNER JOIN ReadyReservations ready ON ready.SubscriptionId = s.SubscriptionId
+          WHERE ready.rn = 1;
+
+          COMMIT TRANSACTION;
+        `);
+
       const entitlement = await pool.request()
         .input("userId", sql.BigInt, user.UserId)
         .query(`
