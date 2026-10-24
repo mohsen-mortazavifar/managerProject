@@ -5,6 +5,7 @@ export type SystemPermissionCode = "dashboard.view"|"tenants.view"|"tenants.upda
 export type SystemPermissionResult = {ok:true;user:Extract<AuthGuardResult,{ok:true}>["user"]}|{ok:false;response:NextResponse};
 export async function requireSystemPermission(request:Request,permission:SystemPermissionCode):Promise<SystemPermissionResult>{
  const auth=await requireAuth(request);if(!auth.ok)return{ok:false,response:auth.response};
+ if(!auth.user.isPlatformUser)return{ok:false,response:NextResponse.json({error:"این بخش فقط برای کاربران داخلی پلتفرم است.",code:"PLATFORM_USER_REQUIRED"},{status:403,headers:{"Cache-Control":"no-store"}})};
  if(auth.user.isSystemAdmin)return{ok:true,user:auth.user};
  try{
   const pool=await getSqlPool();
