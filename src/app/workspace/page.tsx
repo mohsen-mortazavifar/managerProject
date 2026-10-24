@@ -114,9 +114,9 @@ export default function WorkspacePage() {
           <article className="workspace-module-card">
             <span><ClipboardList size={21} /></span><div><h3>مشتریان و سفارش‌ها</h3><p>مدیریت مشتریان، دستگاه‌ها و سوابق</p></div><small>در نقشه راه</small>
           </article>
-          <article className="workspace-module-card">
-            <span><CreditCard size={21} /></span><div><h3>مالی و اشتراک</h3><p>مدیریت هزینه‌ها و پلن کسب‌وکار</p></div><small>در نقشه راه</small>
-          </article>
+          <button type="button" className="workspace-module-card workspace-module-card-link" onClick={() => router.push("/workspace/subscription2")} aria-label="ورود به بخش مالی و اشتراک">
+            <span><CreditCard size={21} /></span><div><h3>مالی و اشتراک</h3><p>مدیریت هزینه‌ها و پلن کسب‌وکار</p></div><small>ورود به بخش</small>
+          </button>
           <article className="workspace-module-card">
             <span><Settings size={21} /></span><div><h3>تنظیمات فضای کاری</h3><p>تنظیمات پایه و دسترسی اعضا</p></div><small>در نقشه راه</small>
           </article>
