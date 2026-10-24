@@ -21,7 +21,7 @@ export async function PATCH(request:Request){
   const pool=await getSqlPool();const existing=await pool.request().input("userId",sql.BigInt,userId).query(`SELECT UserId,FullName,IsActive,IsSystemAdmin,IsPlatformUser FROM dbo.Users WHERE UserId=@userId AND DeletedAt IS NULL;`);
   if(!existing.recordset[0])return NextResponse.json({error:"کاربر پیدا نشد."},{status:404});
   if(Boolean(existing.recordset[0].IsSystemAdmin))return NextResponse.json({error:"حساب مدیر کل از این صفحه قابل تغییر نیست."},{status:400});
-  if(!Boolean(existing.recordset[0].IsPlatformUser) && roleCodes===null && x.isActive===undefined)return NextResponse.json({error:"این حساب هنوز به‌عنوان کاربر داخلی پنل ثبت نشده است."},{status:400});
+  if(!Boolean(existing.recordset[0].IsPlatformUser) && roleCodes===null)return NextResponse.json({error:"این حساب هنوز به‌عنوان کاربر داخلی پنل ثبت نشده است. ابتدا نقش‌های داخلی را صریحاً اختصاص دهید."},{status:400});
   const tx=await pool.transaction();try{await tx.begin();
    const oldActive=Boolean(existing.recordset[0].IsActive);
    const oldRolesResult=await tx.request().input("userId",sql.BigInt,userId).query(`SELECT r.Code FROM dbo.SystemUserRoles ur INNER JOIN dbo.SystemRoles r ON r.SystemRoleId=ur.SystemRoleId WHERE ur.UserId=@userId ORDER BY r.Code;`);
