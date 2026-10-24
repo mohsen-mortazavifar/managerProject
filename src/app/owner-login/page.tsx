@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ArrowRight, KeyRound, LoaderCircle, Phone, ShieldCheck } from "lucide-react";
 
 type RequestResult = { challengeId?: string; message?: string; error?: string };
-type VerifyResult = { accessToken?: string; error?: string };
+type VerifyResult = { accessToken?: string; error?: string; user?: { isPlatformUser?: boolean } };
 
 export default function OwnerLoginPage() {
   const router = useRouter();
@@ -42,7 +42,7 @@ export default function OwnerLoginPage() {
       const result = await response.json() as VerifyResult;
       if (!response.ok || !result.accessToken) { setError(result.error || "کد معتبر نیست یا منقضی شده است."); return; }
       sessionStorage.setItem("repairMasterAccessToken", result.accessToken);
-      router.replace("/onboarding");
+      router.replace(result.user?.isPlatformUser ? "/" : "/onboarding");
     } catch { setError("ارتباط با سرور برقرار نشد."); }
     finally { setBusy(false); }
   }
