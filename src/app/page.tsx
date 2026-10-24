@@ -27,7 +27,8 @@ import {
 const navigation = [
   { label: "نمای کلی", icon: LayoutDashboard, active: true },
   { label: "کسب‌وکارها", icon: Building2 },
-  { label: "کاربران و نقش‌ها", icon: Users },
+  { label: "کاربران پنل", icon: Users },
+  { label: "مجوزهای پنل", icon: ShieldCheck },
   { label: "پلن‌ها و اشتراک‌ها", icon: CreditCard },
   { label: "درخواست‌های آزمایشی", icon: Gift },
   { label: "بررسی پرداخت‌ها", icon: CheckCircle2 },
@@ -145,7 +146,8 @@ export default function Home() {
                 className={`nav-item ${item.active ? "nav-item-active" : ""}`}
                 key={item.label}
                 onClick={() => {
-                  if (item.label === "کاربران و نقش‌ها") { router.push("/system-access"); setMenuOpen(false); return; }
+                  if (item.label === "کاربران پنل") { router.push("/system-users"); setMenuOpen(false); return; }
+                  if (item.label === "مجوزهای پنل") { router.push("/system-permissions"); setMenuOpen(false); return; }
                   if (item.label === "کسب‌وکارها") { router.push("/tenants"); setMenuOpen(false); return; }
                   if (item.label === "پلن‌ها و اشتراک‌ها") { router.push("/plans"); setMenuOpen(false); return; }
                   if (item.label === "درخواست‌های آزمایشی") { router.push("/admin/trial-requests"); setMenuOpen(false); return; }
