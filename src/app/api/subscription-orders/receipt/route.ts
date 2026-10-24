@@ -48,12 +48,13 @@ export async function POST(request: Request) {
     const isWebp = bytes.length >= 12 && bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP";
     if (!(isPdf || isPng || isJpeg || isWebp)) return fail("محتوای فایل با فرمت مجاز مطابقت ندارد.", 415);
 
+    const verifiedContentType = isPdf ? "application/pdf" : isPng ? "image/png" : isJpeg ? "image/jpeg" : "image/webp";
     const result = await pool.request()
       .input("paymentId", sql.BigInt, paymentId)
       .input("tenantId", sql.BigInt, tenant.TenantId)
       .input("data", sql.VarBinary(sql.MAX), bytes)
       .input("fileName", sql.NVarChar(255), file.name.replace(/[\\/\u0000-\u001f]/g, "_").slice(0, 255))
-      .input("contentType", sql.NVarChar(100), file.type)
+      .input("contentType", sql.NVarChar(100), verifiedContentType)
       .input("note", sql.NVarChar(500), note || null)
       .query(`
         UPDATE pt
