@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import sql from "mssql";
+import sql, { type config as SqlConfig } from "mssql";
 import { getSqlPool, sql as dbSql } from "@/lib/db";
 import { requireSystemAdmin } from "@/lib/auth/guard";
 
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 type Context = { params: Promise<{ tenantDatabaseId: string }> };
 const json = (body: object, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
-function tenantConfig(database: string): sql.config {
+function tenantConfig(database: string): SqlConfig {
   const server = process.env.DB_SERVER, user = process.env.DB_USER, password = process.env.DB_PASSWORD;
   if (!server || !user || !password) throw new Error("DB_CONNECTION_NOT_CONFIGURED");
   const port = process.env.DB_PORT ? Number(process.env.DB_PORT) : 1433;
