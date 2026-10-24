@@ -50,7 +50,7 @@ export async function POST(request:Request){
  if(auth.user.isSystemAdmin)return fail("مدیر سیستم نمی‌تواند از این مسیر درخواست اشتراک ثبت کند.",403);
  let body:unknown;try{body=await request.json();}catch{return fail("بدنه درخواست معتبر نیست.",400);}
  const planId=(body as {subscriptionPlanId?:unknown}|null)?.subscriptionPlanId;
- if(typeof planId!=="string"||!/^[1-9]\\d{0,18}$/.test(planId))return fail("شناسه پلن معتبر نیست.",400);
+ if(typeof planId!=="string"||!/^[1-9]\d{0,18}$/.test(planId))return fail("شناسه پلن معتبر نیست.",400);
  try{
   const pool=await getSqlPool(),tenant=await getOwnerTenant(auth.user.userId);
   if(!tenant)return fail("فقط مالک کسب‌وکار می‌تواند درخواست اشتراک ثبت کند.",403);
