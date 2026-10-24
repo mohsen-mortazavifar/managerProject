@@ -18,14 +18,27 @@ export async function PATCH(request:Request){
  if(x.roleCodes!==undefined&&(!Array.isArray(x.roleCodes)||x.roleCodes.some(v=>typeof v!=="string"||v.length>80)||x.roleCodes.length>20))return NextResponse.json({error:"نقش‌های انتخاب‌شده معتبر نیستند."},{status:400});
  const roleCodes=x.roleCodes===undefined?null:[...new Set(x.roleCodes as string[])];
  try{
-  const pool=await getSqlPool();const existing=await pool.request().input("userId",sql.BigInt,userId).query(`SELECT UserId,IsSystemAdmin FROM dbo.Users WHERE UserId=@userId AND DeletedAt IS NULL;`);
+  const pool=await getSqlPool();const existing=await pool.request().input("userId",sql.BigInt,userId).query(`SELECT UserId,FullName,IsActive,IsSystemAdmin FROM dbo.Users WHERE UserId=@userId AND DeletedAt IS NULL;`);
   if(!existing.recordset[0])return NextResponse.json({error:"کاربر پیدا نشد."},{status:404});
   if(Boolean(existing.recordset[0].IsSystemAdmin))return NextResponse.json({error:"حساب مدیر کل از این صفحه قابل تغییر نیست."},{status:400});
   const tx=await pool.transaction();try{await tx.begin();
-   if(x.isActive!==undefined)await tx.request().input("userId",sql.BigInt,userId).input("isActive",sql.Bit,x.isActive).query(`UPDATE dbo.Users SET IsActive=@isActive WHERE UserId=@userId;`);
+   const oldActive=Boolean(existing.recordset[0].IsActive);
+   const oldRolesResult=await tx.request().input("userId",sql.BigInt,userId).query(`SELECT r.Code FROM dbo.SystemUserRoles ur INNER JOIN dbo.SystemRoles r ON r.SystemRoleId=ur.SystemRoleId WHERE ur.UserId=@userId ORDER BY r.Code;`);
+   const oldRoles=oldRolesResult.recordset.map((row: {Code:string})=>String(row.Code)).sort();
+   if(x.isActive!==undefined && x.isActive!==oldActive)await tx.request().input("userId",sql.BigInt,userId).input("isActive",sql.Bit,x.isActive).query(`UPDATE dbo.Users SET IsActive=@isActive WHERE UserId=@userId;`);
    if(roleCodes!==null){
     await tx.request().input("userId",sql.BigInt,userId).query(`DELETE FROM dbo.SystemUserRoles WHERE UserId=@userId;`);
     for(const code of roleCodes)await tx.request().input("userId",sql.BigInt,userId).input("code",sql.NVarChar(80),code).input("assignedBy",sql.BigInt,auth.user.userId).query(`IF NOT EXISTS(SELECT 1 FROM dbo.SystemRoles WHERE Code=@code AND IsActive=1 AND Code<>N'SYSTEM_ADMIN') THROW 50003,'Invalid system role.',1; INSERT dbo.SystemUserRoles(UserId,SystemRoleId,AssignedByUserId) SELECT @userId,SystemRoleId,@assignedBy FROM dbo.SystemRoles WHERE Code=@code AND IsActive=1;`);
+   }
+   const newActive=x.isActive===undefined?oldActive:x.isActive;
+   const newRoles=roleCodes===null?oldRoles:[...roleCodes].sort();
+   const changedActive=newActive!==oldActive;
+   const changedRoles=roleCodes!==null && JSON.stringify(oldRoles)!==JSON.stringify(newRoles);
+   if(changedActive || changedRoles){
+    const eventType=changedActive&&changedRoles?"SystemUser.Updated":changedActive?"SystemUser.StatusChanged":"SystemUser.RolesChanged";
+    const message=changedActive&&changedRoles?"وضعیت و نقش‌های کاربر پنل تغییر کرد":changedActive?(newActive?"کاربر پنل فعال شد":"کاربر پنل غیرفعال شد"):"نقش‌های کاربر پنل تغییر کرد";
+    const details=JSON.stringify({userId,fullName:String(existing.recordset[0].FullName),oldIsActive:oldActive,newIsActive:newActive,oldRoleCodes:oldRoles,newRoleCodes:newRoles});
+    await tx.request().input("eventType",sql.NVarChar(80),eventType).input("entityId",sql.NVarChar(100),userId).input("message",sql.NVarChar(1000),message).input("details",sql.NVarChar(sql.MAX),details).input("actorUserId",sql.BigInt,auth.user.userId).query(`INSERT INTO dbo.SystemEventLogs(EventType,Severity,EntityType,EntityId,Message,Details,ActorUserId,CreatedAt) VALUES(@eventType,N'Info',N'SystemUser',@entityId,@message,@details,@actorUserId,SYSUTCDATETIME());`);
    }
    await tx.commit();
   }catch(e){await tx.rollback().catch(()=>undefined);throw e}
