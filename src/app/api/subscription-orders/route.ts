@@ -28,7 +28,7 @@ export async function GET(request:Request){
   const r=await pool.request().input("tenantId",sql.BigInt,tenant.TenantId).query(`
    SELECT s.SubscriptionId,s.Status,s.StartsAt,s.EndsAt,s.PriceAtSubscription,s.CreatedAt,
           p.Name AS PlanName,p.MaxBranches,p.MaxUsers,p.MaxSmsPerMonth,
-          pt.PaymentTransactionId,pt.Status AS PaymentStatus,pt.Gateway,pt.GatewayTransactionId,pt.PaidAt,pt.CreatedAt AS PaymentCreatedAt
+          pt.PaymentTransactionId,pt.Status AS PaymentStatus,pt.Gateway,pt.GatewayTransactionId,pt.PaidAt,pt.CreatedAt AS PaymentCreatedAt,pt.ReceiptUploadedAt,pt.ReceiptFileName,pt.ReceiptNote
    FROM dbo.Subscriptions s
    INNER JOIN dbo.SubscriptionPlans p ON p.SubscriptionPlanId=s.SubscriptionPlanId
    LEFT JOIN dbo.PaymentTransactions pt ON pt.SubscriptionId=s.SubscriptionId
@@ -41,7 +41,7 @@ export async function GET(request:Request){
    maxBranches:Number(x.MaxBranches),maxUsers:Number(x.MaxUsers),maxSmsPerMonth:Number(x.MaxSmsPerMonth),
    paymentTransactionId:x.PaymentTransactionId==null?null:String(x.PaymentTransactionId),
    paymentStatus:x.PaymentStatus==null?null:String(x.PaymentStatus),gateway:x.Gateway==null?null:String(x.Gateway),
-   gatewayTransactionId:x.GatewayTransactionId==null?null:String(x.GatewayTransactionId),paidAt:x.PaidAt,
+   gatewayTransactionId:x.GatewayTransactionId==null?null:String(x.GatewayTransactionId),paidAt:x.PaidAt,receiptUploadedAt:x.ReceiptUploadedAt,receiptFileName:x.ReceiptFileName==null?null:String(x.ReceiptFileName),receiptNote:x.ReceiptNote==null?null:String(x.ReceiptNote),
   }))},{headers:{"Cache-Control":"no-store"}});
  }catch{return fail("دریافت سفارش‌ها ممکن نشد. اجرای Migration دیتابیس را بررسی کنید.",503);}
 }
