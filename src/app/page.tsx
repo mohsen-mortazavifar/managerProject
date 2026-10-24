@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -84,10 +84,39 @@ export default function Home() {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [checkingAccess, setCheckingAccess] = useState(true);
+
+  useEffect(() => {
+    const token = sessionStorage.getItem("repairMasterAccessToken");
+    if (!token) { router.replace("/login"); return; }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+        const data = await response.json();
+        if (cancelled) return;
+        if (response.status === 401) {
+          sessionStorage.removeItem("repairMasterAccessToken");
+          router.replace("/login");
+          return;
+        }
+        if (!response.ok || !data.user?.isSystemAdmin) {
+          router.replace("/workspace");
+          return;
+        }
+        setCheckingAccess(false);
+      } catch {
+        if (!cancelled) { setCheckingAccess(false); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [router]);
 
   const filteredItems = workItems.filter((item) =>
     `${item.title} ${item.description} ${item.tag}`.includes(search.trim()),
   );
+
+  if (checkingAccess) return <main className="tenant-page" dir="rtl"><section className="tenant-content"><div className="tenant-state">در حال بررسی دسترسی مدیر سیستم...</div></section></main>;
 
   return (
     <div className="app-shell" dir="rtl">
