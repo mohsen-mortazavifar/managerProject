@@ -5,6 +5,7 @@ export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export async function GET(request:Request){
  const auth=await requireAuth(request);if(!auth.ok)return auth.response;
+ if(auth.user.isPlatformUser)return NextResponse.json({error:"این بخش مخصوص مالک کسب‌وکار است."},{status:403,headers:{"Cache-Control":"no-store"}});
  try{
   const pool=await getSqlPool();
   const owner=await pool.request().input("userId", sql.BigInt, auth.user.userId).query(`
