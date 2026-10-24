@@ -44,17 +44,24 @@ export async function POST(request: Request) {
   const existingUser = await pool.request()
     .input("mobile", sql.NVarChar(40), mobile)
     .query(`
-      SELECT TOP (1) UserId
-      FROM dbo.Users
-      WHERE Mobile = @mobile
-        AND DeletedAt IS NULL;
+      SELECT TOP (1) u.UserId, u.IsPlatformUser, u.IsSystemAdmin,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM dbo.TenantUsers tu
+          WHERE tu.UserId = u.UserId AND tu.IsOwner = 1 AND tu.IsActive = 1
+        ) THEN 1 ELSE 0 END AS IsBusinessOwner
+      FROM dbo.Users u
+      WHERE u.Mobile = @mobile AND u.DeletedAt IS NULL;
     `);
 
-  if (existingUser.recordset.length === 0) {
+  const existing = existingUser.recordset[0];
+  if (!existing) {
     return response(
       { error: "این شماره موبایل در سیستم ثبت نشده است. ابتدا ثبت‌نام کنید." },
       404
     );
+  }
+  if (!Boolean(existing.IsPlatformUser) && !Boolean(existing.IsSystemAdmin) && !Boolean(existing.IsBusinessOwner)) {
+    return response({ error: "ورود همکاران با شماره موبایل و رمز عبور انجام می‌شود. اگر رمز ندارید، از مالک کسب‌وکار بخواهید آن را تعیین کند." }, 403);
   }
 }
 
