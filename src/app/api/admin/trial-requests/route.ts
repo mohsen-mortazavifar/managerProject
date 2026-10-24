@@ -42,7 +42,7 @@ export async function PATCH(request: Request) {
   let body: unknown;
   try { body = await request.json(); } catch { return fail("بدنه درخواست معتبر نیست.", 400); }
   const input = body as { trialRequestId?: unknown; decision?: unknown; note?: unknown } | null;
-  if (!input || typeof input.trialRequestId !== "string" || !/^[1-9]\\d{0,18}$/.test(input.trialRequestId))
+  if (!input || typeof input.trialRequestId !== "string" || !/^[1-9]\d{0,18}$/.test(input.trialRequestId))
     return fail("شناسه درخواست معتبر نیست.", 400);
   if (input.decision !== "Approved" && input.decision !== "Rejected")
     return fail("تصمیم باید تأیید یا رد باشد.", 400);
