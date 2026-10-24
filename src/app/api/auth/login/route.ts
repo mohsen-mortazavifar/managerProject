@@ -59,7 +59,7 @@ export async function POST(request: Request) {
     const result = await pool.request()
       .input("email", sql.NVarChar(255), normalizedEmail)
       .query(`
-        SELECT TOP (1) UserId, Email, PasswordHash, FullName, IsActive, IsSystemAdmin
+        SELECT TOP (1) UserId, Email, PasswordHash, FullName, IsActive, IsSystemAdmin, IsPlatformUser
         FROM dbo.Users
         WHERE LOWER(Email) = @email AND DeletedAt IS NULL;
       `);
@@ -77,11 +77,22 @@ export async function POST(request: Request) {
       );
     }
 
+    const isSystemAdmin = Boolean(user.IsSystemAdmin);
+    const isPlatformUser = Boolean(user.IsPlatformUser) || isSystemAdmin;
+    if (!isPlatformUser) {
+      await recordLoginAttempt(normalizedEmail, clientIp, false, request);
+      return NextResponse.json(
+        { error: "این حساب اجازه ورود به پنل اصلی را ندارد." },
+        { status: 403, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
     const publicUser = {
       userId: String(user.UserId),
       email: String(user.Email),
       fullName: String(user.FullName),
-      isSystemAdmin: Boolean(user.IsSystemAdmin),
+      isSystemAdmin,
+      isPlatformUser,
     };
 
     const accessToken = createAccessToken(publicUser);
