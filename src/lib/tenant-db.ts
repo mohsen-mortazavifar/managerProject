@@ -10,8 +10,8 @@ export type TenantDatabaseResult =
   | { ok: true; tenantId: string; databaseName: string; pool: sql.ConnectionPool }
   | { ok: false; reason: "PLATFORM_USER" | "NO_ACTIVE_TENANT" | "TENANT_NOT_READY" | "DATABASE_NOT_CONFIGURED" };
 
-function getTenantSqlConfig(database: string): SqlConfig {
-  const server = process.env.DB_SERVER;
+function getTenantSqlConfig(database: string, tenantServer?: string | null): SqlConfig {
+  const server = tenantServer || process.env.TENANT_DB_SERVER || process.env.DB_SERVER;
   const user = process.env.DB_USER;
   const password = process.env.DB_PASSWORD;
   if (!server || !user || !password) throw new Error("SQL Server connection settings are incomplete.");
@@ -48,7 +48,7 @@ export async function getTenantSqlPoolForUser(
     .query(`
       SELECT TOP (1)
         t.TenantId, t.Status AS TenantStatus,
-        td.DatabaseName, td.IsActive AS DatabaseIsActive, td.SchemaVersion
+        td.DatabaseName, td.ServerName, td.IsActive AS DatabaseIsActive, td.SchemaVersion
       FROM dbo.TenantUsers tu
       INNER JOIN dbo.Tenants t ON t.TenantId = tu.TenantId AND t.DeletedAt IS NULL
       INNER JOIN dbo.TenantDatabases td ON td.TenantId = t.TenantId
@@ -81,7 +81,7 @@ export async function getTenantSqlPoolForUser(
 
   let promise = pending.get(databaseName);
   if (!promise) {
-    const pool = new sql.ConnectionPool(getTenantSqlConfig(databaseName));
+    const pool = new sql.ConnectionPool(getTenantSqlConfig(databaseName, row.ServerName == null ? null : String(row.ServerName)));
     promise = pool.connect().then(
       connected => {
         pools.set(databaseName, connected);
