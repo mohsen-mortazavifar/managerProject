@@ -27,7 +27,7 @@ export default function LoginPage() {
         return;
       }
       sessionStorage.setItem("repairMasterAccessToken", result.accessToken);
-      router.replace("/tenants");
+      router.replace("/");
     } catch {
       setError("ارتباط با سرور برقرار نشد. اجرای برنامه و تنظیمات دیتابیس را بررسی کنید.");
     } finally {
