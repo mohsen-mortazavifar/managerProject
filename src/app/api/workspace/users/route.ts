@@ -34,7 +34,7 @@ export async function GET(request: Request) {
   const auth = await requireAuth(request);
   if (!auth.ok) return auth.response;
 
-  if (auth.user.isSystemAdmin) {
+  if (auth.user.isPlatformUser) {
     return json({ error: "این بخش مخصوص مالک کسب‌وکار است." }, 403);
   }
 
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
   const auth = await requireAuth(request);
   if (!auth.ok) return auth.response;
 
-  if (auth.user.isSystemAdmin) {
+  if (auth.user.isPlatformUser) {
     return json({ error: "این بخش مخصوص مالک کسب‌وکار است." }, 403);
   }
 
@@ -231,7 +231,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const auth = await requireAuth(request);
   if (!auth.ok) return auth.response;
-  if (auth.user.isSystemAdmin) return json({ error: "این بخش مخصوص مالک کسب‌وکار است." }, 403);
+  if (auth.user.isPlatformUser) return json({ error: "این بخش مخصوص مالک کسب‌وکار است." }, 403);
   let body: unknown;
   try { body = await request.json(); } catch { return json({ error: "درخواست نامعتبر است." }, 400); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "درخواست نامعتبر است." }, 400);
