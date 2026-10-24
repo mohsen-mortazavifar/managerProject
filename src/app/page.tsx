@@ -13,6 +13,7 @@ import {
   CreditCard,
   Database,
   FileClock,
+  Gift,
   LayoutDashboard,
   Menu,
   Search,
@@ -28,6 +29,7 @@ const navigation = [
   { label: "کسب‌وکارها", icon: Building2 },
   { label: "کاربران و نقش‌ها", icon: Users },
   { label: "پلن‌ها و اشتراک‌ها", icon: CreditCard },
+  { label: "درخواست‌های آزمایشی", icon: Gift },
   { label: "بررسی پرداخت‌ها", icon: CheckCircle2 },
   { label: "سفارش پلن", icon: ShoppingCart },
   { label: "پایگاه‌های داده", icon: Database },
@@ -106,6 +108,7 @@ export default function Home() {
                 onClick={() => {
                   if (item.label === "کسب‌وکارها") { router.push("/tenants"); setMenuOpen(false); return; }
                   if (item.label === "پلن‌ها و اشتراک‌ها") { router.push("/plans"); setMenuOpen(false); return; }
+                  if (item.label === "درخواست‌های آزمایشی") { router.push("/admin/trial-requests"); setMenuOpen(false); return; }
                   if (item.label === "بررسی پرداخت‌ها") { router.push("/payments"); setMenuOpen(false); return; }
                   if (item.label === "سفارش پلن") { router.push("/subscription"); setMenuOpen(false); return; }
                   if (item.label === "سلامت سامانه") { router.push("/health"); setMenuOpen(false); return; }
