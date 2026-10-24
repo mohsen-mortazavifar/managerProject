@@ -101,7 +101,7 @@ export default function Home() {
           router.replace("/login");
           return;
         }
-        if (!response.ok || !data.user?.isSystemAdmin) {
+        if (!response.ok || !data.user?.isPlatformUser) {
           router.replace("/workspace");
           return;
         }
