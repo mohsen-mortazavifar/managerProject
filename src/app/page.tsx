@@ -106,7 +106,7 @@ export default function Home() {
         }
         setCheckingAccess(false);
       } catch {
-        if (!cancelled) { setCheckingAccess(false); }
+        if (!cancelled) router.replace("/login");
       }
     })();
     return () => { cancelled = true; };
