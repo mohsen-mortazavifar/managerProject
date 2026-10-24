@@ -48,9 +48,11 @@ WHEN MATCHED THEN UPDATE SET Name=s.Name,Description=s.Description,Category=s.Ca
 WHEN NOT MATCHED THEN INSERT(Code,Name,Description,Category) VALUES(s.Code,s.Name,s.Description,s.Category);
 INSERT dbo.SystemRolePermissions(SystemRoleId,SystemPermissionId)
 SELECT r.SystemRoleId,p.SystemPermissionId FROM dbo.SystemRoles r CROSS JOIN dbo.SystemPermissions p
-WHERE (r.Code=N'TECHNICAL_MANAGER' AND p.Code IN(N'dashboard.view',N'tenants.view',N'databases.view',N'databases.diagnostics',N'events.view'))
-OR (r.Code=N'CUSTOMER_SUCCESS' AND p.Code IN(N'dashboard.view',N'tenants.view',N'subscriptions.view',N'subscriptions.manage',N'customers.followup',N'marketing.manage'))
-OR (r.Code=N'SUPPORT_AGENT' AND p.Code IN(N'dashboard.view',N'tenants.view',N'tickets.view',N'tickets.create',N'tickets.assign',N'tickets.resolve'))
+WHERE (
+ (r.Code=N'TECHNICAL_MANAGER' AND p.Code IN(N'dashboard.view',N'tenants.view',N'databases.view',N'databases.diagnostics',N'events.view'))
+ OR (r.Code=N'CUSTOMER_SUCCESS' AND p.Code IN(N'dashboard.view',N'tenants.view',N'subscriptions.view',N'subscriptions.manage',N'customers.followup',N'marketing.manage'))
+ OR (r.Code=N'SUPPORT_AGENT' AND p.Code IN(N'dashboard.view',N'tenants.view',N'tickets.view',N'tickets.create',N'tickets.assign',N'tickets.resolve'))
+)
 AND NOT EXISTS(SELECT 1 FROM dbo.SystemRolePermissions x WHERE x.SystemRoleId=r.SystemRoleId AND x.SystemPermissionId=p.SystemPermissionId);
 INSERT dbo.SystemUserRoles(UserId,SystemRoleId)
 SELECT u.UserId,r.SystemRoleId FROM dbo.Users u CROSS JOIN dbo.SystemRoles r
