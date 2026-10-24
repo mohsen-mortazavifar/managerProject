@@ -15,9 +15,9 @@ export async function GET(request:Request){
   `);
   if(!owner.recordset[0])return NextResponse.json({error:"حساب مالک کسب‌وکار پیدا نشد."},{status:403});
   const result=await pool.request().query(`
-   SELECT SubscriptionPlanId,Name,Description,Price,DurationDays,MaxBranches,MaxUsers,MaxSmsPerMonth,IsTrial
+   SELECT SubscriptionPlanId,Name,Description,Price,DiscountPercent,DurationDays,MaxBranches,MaxUsers,MaxSmsPerMonth,IsTrial
    FROM dbo.SubscriptionPlans WHERE IsActive=1 ORDER BY Price,SubscriptionPlanId;
   `);
-  return NextResponse.json({plans:result.recordset.map(p=>({subscriptionPlanId:String(p.SubscriptionPlanId),name:String(p.Name),description:p.Description==null?"":String(p.Description),price:Number(p.Price),durationDays:Number(p.DurationDays),maxBranches:Number(p.MaxBranches),maxUsers:Number(p.MaxUsers),maxSmsPerMonth:Number(p.MaxSmsPerMonth),isTrial:Boolean(p.IsTrial)}))},{headers:{"Cache-Control":"no-store"}});
+  return NextResponse.json({plans:result.recordset.map(p=>({subscriptionPlanId:String(p.SubscriptionPlanId),name:String(p.Name),description:p.Description==null?"":String(p.Description),price:Number(p.Price),discountPercent:Number(p.DiscountPercent??0),effectivePrice:Boolean(p.IsTrial)?0:Math.round(Number(p.Price)*(1-Number(p.DiscountPercent??0)/100)*100)/100,durationDays:Number(p.DurationDays),maxBranches:Number(p.MaxBranches),maxUsers:Number(p.MaxUsers),maxSmsPerMonth:Number(p.MaxSmsPerMonth),isTrial:Boolean(p.IsTrial)}))},{headers:{"Cache-Control":"no-store"}});
  }catch{return NextResponse.json({error:"دریافت پلن‌های قابل سفارش ممکن نشد."},{status:503,headers:{"Cache-Control":"no-store"}});}
 }
