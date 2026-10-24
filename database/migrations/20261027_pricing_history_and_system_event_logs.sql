@@ -56,27 +56,29 @@ BEGIN
  SET NOCOUNT ON;
  IF NOT UPDATE(Price) AND NOT UPDATE(DiscountPercent) RETURN;
  DECLARE @Now DATETIME2(3)=SYSUTCDATETIME();
- ;WITH Changed AS(
-  SELECT i.SubscriptionPlanId,i.Price,i.DiscountPercent,d.Price AS OldPrice,d.DiscountPercent AS OldDiscount
-  FROM inserted i INNER JOIN deleted d ON d.SubscriptionPlanId=i.SubscriptionPlanId
-  WHERE i.Price<>d.Price OR COALESCE(i.DiscountPercent,0)<>COALESCE(d.DiscountPercent,0)
- )
+ DECLARE @Changed TABLE(SubscriptionPlanId BIGINT PRIMARY KEY,NewPrice DECIMAL(18,2),NewDiscount DECIMAL(5,2),OldPrice DECIMAL(18,2),OldDiscount DECIMAL(5,2));
+ INSERT INTO @Changed(SubscriptionPlanId,NewPrice,NewDiscount,OldPrice,OldDiscount)
+ SELECT i.SubscriptionPlanId,i.Price,COALESCE(i.DiscountPercent,0),d.Price,COALESCE(d.DiscountPercent,0)
+ FROM inserted i INNER JOIN deleted d ON d.SubscriptionPlanId=i.SubscriptionPlanId
+ WHERE i.Price<>d.Price OR COALESCE(i.DiscountPercent,0)<>COALESCE(d.DiscountPercent,0);
+
  UPDATE h SET ValidTo=@Now
  FROM dbo.SubscriptionPlanPriceHistory h
- INNER JOIN Changed c ON c.SubscriptionPlanId=h.SubscriptionPlanId
+ INNER JOIN @Changed c ON c.SubscriptionPlanId=h.SubscriptionPlanId
  WHERE h.ValidTo IS NULL;
 
  INSERT INTO dbo.SubscriptionPlanPriceHistory(SubscriptionPlanId,BasePrice,DiscountPercent,ValidFrom,ChangeReason)
- SELECT c.SubscriptionPlanId,c.Price,COALESCE(c.DiscountPercent,0),@Now,
-  CONCAT(N'تغییر قیمت/تخفیف از ',CONVERT(NVARCHAR(40),c.OldPrice),N' (تخفیف ',CONVERT(NVARCHAR(20),COALESCE(c.OldDiscount,0)),N'٪) به ',CONVERT(NVARCHAR(40),c.Price),N' (تخفیف ',CONVERT(NVARCHAR(20),COALESCE(c.DiscountPercent,0)),N'٪)')
- FROM Changed c;
+ SELECT c.SubscriptionPlanId,c.NewPrice,c.NewDiscount,@Now,
+  CONCAT(N'تغییر قیمت/تخفیف از ',CONVERT(NVARCHAR(40),c.OldPrice),N' (تخفیف ',CONVERT(NVARCHAR(20),c.OldDiscount),N'٪) به ',CONVERT(NVARCHAR(40),c.NewPrice),N' (تخفیف ',CONVERT(NVARCHAR(20),c.NewDiscount),N'٪)')
+ FROM @Changed c;
 
  INSERT INTO dbo.SystemEventLogs(EventType,Severity,EntityType,EntityId,Message,CreatedAt)
  SELECT N'SubscriptionPlan.PricingChanged',N'Info',N'SubscriptionPlan',CONVERT(NVARCHAR(100),c.SubscriptionPlanId),
-  CONCAT(N'قیمت پلن تغییر کرد؛ قیمت پایه: ',CONVERT(NVARCHAR(40),c.Price),N'، تخفیف: ',CONVERT(NVARCHAR(20),COALESCE(c.DiscountPercent,0)),N'٪'),@Now
- FROM Changed c;
+  CONCAT(N'قیمت پلن تغییر کرد؛ قیمت پایه: ',CONVERT(NVARCHAR(40),c.NewPrice),N'، تخفیف: ',CONVERT(NVARCHAR(20),c.NewDiscount),N'٪'),@Now
+ FROM @Changed c;
 END;
 GO
+
 
 CREATE OR ALTER TRIGGER dbo.TR_Tenants_Audit
 ON dbo.Tenants
@@ -106,5 +108,36 @@ BEGIN
   CONCAT(N'پرداخت #',i.PaymentTransactionId,N'؛ وضعیت: ',i.Status,N'؛ مبلغ: ',CONVERT(NVARCHAR(40),i.Amount)),SYSUTCDATETIME()
  FROM inserted i LEFT JOIN deleted d ON d.PaymentTransactionId=i.PaymentTransactionId
  WHERE d.PaymentTransactionId IS NULL OR d.Status<>i.Status OR d.Amount<>i.Amount;
+END;
+GO
+CREATE OR ALTER TRIGGER dbo.TR_TenantTrialRequests_Audit
+ON dbo.TenantTrialRequests
+AFTER INSERT,UPDATE
+AS
+BEGIN
+ SET NOCOUNT ON;
+ INSERT INTO dbo.SystemEventLogs(EventType,Severity,EntityType,EntityId,Message,CreatedAt)
+ SELECT CASE WHEN d.TrialRequestId IS NULL THEN N'TrialRequest.Created' ELSE N'TrialRequest.Decided' END,
+  CASE WHEN i.Status=N'Rejected' THEN N'Warning' ELSE N'Info' END,
+  N'TenantTrialRequest',CONVERT(NVARCHAR(100),i.TrialRequestId),
+  CONCAT(N'درخواست آزمایشی #',i.TrialRequestId,N' برای کسب‌وکار #',i.TenantId,N'؛ وضعیت: ',i.Status),SYSUTCDATETIME()
+ FROM inserted i LEFT JOIN deleted d ON d.TrialRequestId=i.TrialRequestId
+ WHERE d.TrialRequestId IS NULL OR d.Status<>i.Status;
+END;
+GO
+
+CREATE OR ALTER TRIGGER dbo.TR_Subscriptions_Audit
+ON dbo.Subscriptions
+AFTER INSERT,UPDATE
+AS
+BEGIN
+ SET NOCOUNT ON;
+ INSERT INTO dbo.SystemEventLogs(EventType,Severity,EntityType,EntityId,Message,CreatedAt)
+ SELECT CASE WHEN d.SubscriptionId IS NULL THEN N'Subscription.Created' ELSE N'Subscription.StatusChanged' END,
+  CASE WHEN i.Status IN(N'Expired',N'Cancelled') THEN N'Warning' ELSE N'Info' END,
+  N'Subscription',CONVERT(NVARCHAR(100),i.SubscriptionId),
+  CONCAT(N'اشتراک #',i.SubscriptionId,N' برای کسب‌وکار #',i.TenantId,N'؛ وضعیت: ',i.Status,N'؛ مبلغ ثبت‌شده: ',CONVERT(NVARCHAR(40),i.PriceAtSubscription)),SYSUTCDATETIME()
+ FROM inserted i LEFT JOIN deleted d ON d.SubscriptionId=i.SubscriptionId
+ WHERE d.SubscriptionId IS NULL OR d.Status<>i.Status OR d.PriceAtSubscription<>i.PriceAtSubscription;
 END;
 GO
