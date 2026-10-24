@@ -140,12 +140,27 @@ export async function PATCH(request: Request, context: RouteContext) {
       .input("contactMobile", sql.NVarChar(20), contactMobile || null)
       .input("status", sql.NVarChar(30), status)
       .query(`
+        DECLARE @updatedTenant TABLE (
+          TenantId BIGINT,
+          Name NVARCHAR(200),
+          Code NVARCHAR(100),
+          Status NVARCHAR(30),
+          ContactEmail NVARCHAR(255),
+          ContactMobile NVARCHAR(20),
+          CreatedAt DATETIME2,
+          UpdatedAt DATETIME2
+        );
+
         UPDATE dbo.Tenants
         SET Name = @name, ContactEmail = @contactEmail, ContactMobile = @contactMobile,
             Status = @status, UpdatedAt = SYSUTCDATETIME()
         OUTPUT INSERTED.TenantId, INSERTED.Name, INSERTED.Code, INSERTED.Status,
                INSERTED.ContactEmail, INSERTED.ContactMobile, INSERTED.CreatedAt, INSERTED.UpdatedAt
+        INTO @updatedTenant
         WHERE TenantId = @tenantId AND DeletedAt IS NULL;
+
+        SELECT TenantId, Name, Code, Status, ContactEmail, ContactMobile, CreatedAt, UpdatedAt
+        FROM @updatedTenant;
       `);
     const row = result.recordset[0];
     if (!row) return NextResponse.json({ error: "کسب‌وکار پیدا نشد." }, { status: 404 });
