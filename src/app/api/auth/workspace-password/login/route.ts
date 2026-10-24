@@ -55,8 +55,14 @@ export async function POST(request: Request) {
       SELECT TOP (1) tu.TenantUserId
       FROM dbo.TenantUsers tu
       INNER JOIN dbo.Tenants t ON t.TenantId = tu.TenantId
-      WHERE tu.UserId = @userId AND tu.IsActive = 1 AND tu.IsOwner = 0
-        AND t.DeletedAt IS NULL AND t.Status = N'Active';
+      WHERE tu.UserId = @userId
+        AND tu.IsActive = 1
+        AND t.DeletedAt IS NULL
+        AND (
+          (tu.IsOwner = 1 AND t.Status IN (N'Active', N'Pending'))
+          OR (tu.IsOwner = 0 AND t.Status = N'Active')
+        )
+      ORDER BY tu.IsOwner DESC, tu.TenantUserId;
     `);
     if (!membership.recordset[0]) {
       await recordLoginAttempt(mobile, clientIp, false, request);
