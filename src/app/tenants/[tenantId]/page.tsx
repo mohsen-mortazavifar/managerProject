@@ -18,7 +18,7 @@ export default function TenantDetailPage(){
  const router=useRouter(); const params=useParams<{tenantId:string}>(); const tenantId=params.tenantId;
  const [token,setToken]=useState(""); const [data,setData]=useState<Overview|null>(null);
  const [loading,setLoading]=useState(true); const [busy,setBusy]=useState(false); const [error,setError]=useState(""); const [notice,setNotice]=useState("");
- useEffect(()=>{setToken(sessionStorage.getItem("repairMasterAccessToken")??"")},[]);
+ useEffect(()=>{const accessToken=sessionStorage.getItem("repairMasterAccessToken")??"";if(!accessToken){router.replace("/login");return}setToken(accessToken)},[router]);
  const load=useCallback(async()=>{if(!token||!tenantId)return;setLoading(true);setError("");try{
    const r=await fetch("/api/tenants/"+encodeURIComponent(tenantId)+"/overview",{headers:{Authorization:"Bearer "+token},cache:"no-store"});
    const d=await r.json(); if(r.status===401||r.status===403){sessionStorage.removeItem("repairMasterAccessToken");router.replace("/login");return}
