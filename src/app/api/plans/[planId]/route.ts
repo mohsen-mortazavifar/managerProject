@@ -30,6 +30,7 @@ if(description.length>1000)return {error:"توضیحات حداکثر ۱۰۰۰ �
 if(!Number.isFinite(price)||price<0||price>9999999999999999)return {error:"قیمت معتبر نیست."} as const;
 if(!Number.isFinite(discountPercent)||discountPercent<0||discountPercent>=100)return {error:"درصد تخفیف باید از صفر تا کمتر از ۱۰۰ باشد."} as const;
 if(typeof isTrial!=="boolean")return {error:"نوع پلن معتبر نیست."} as const;
+if(!isTrial&&price<=0)return {error:"پلن عادی باید قیمت بیشتر از صفر داشته باشد."} as const;
 if(isTrial&&(price!==0||discountPercent!==0))return {error:"پلن آزمایشی باید رایگان باشد و تخفیف جداگانه ندارد."} as const;
 if(!Number.isInteger(durationDays)||durationDays<1||durationDays>36500)return {error:"مدت اعتبار باید تعداد روز معتبر باشد."} as const;
 for(const [v,l] of [[maxBranches,"شعبه"],[maxUsers,"کاربر"],[maxSmsPerMonth,"پیامک"]] as const)if(!Number.isSafeInteger(v)||v<0||v>1000000000)return {error:`محدودیت تعداد ${l} معتبر نیست.`} as const;
