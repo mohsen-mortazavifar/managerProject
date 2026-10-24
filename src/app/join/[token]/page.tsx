@@ -74,7 +74,7 @@ export default function JoinWorkspacePage() {
         {activated ? (
           <div className="auth-form" role="status">
             <div className="auth-success"><CheckCircle2 size={22} /><span>فعال‌سازی با موفقیت انجام شد.</span></div>
-            <p className="auth-description">عضویت شما در «{invitation?.businessName || "این کسب‌وکار"}» ثبت شد. اکنون می‌توانید با شماره موبایل تأییدشده وارد حساب خود شوید.</p>
+            <p className="auth-description">عضویت شما در «{invitation?.businessName || "این کسب‌وکار"}» ثبت شد. از مالک کسب‌وکار بخواهید رمز اولیه شما را در بخش کاربران تعیین کند؛ سپس با شماره موبایل و رمز عبور وارد شوید.</p>
             <a className="auth-submit" href="/owner-login"><CheckCircle2 size={17} /> رفتن به صفحه ورود</a>
           </div>
         ) : <>
