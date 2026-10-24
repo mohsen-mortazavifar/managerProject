@@ -145,6 +145,7 @@ export default function Home() {
                 className={`nav-item ${item.active ? "nav-item-active" : ""}`}
                 key={item.label}
                 onClick={() => {
+                  if (item.label === "کاربران و نقش‌ها") { router.push("/system-access"); setMenuOpen(false); return; }
                   if (item.label === "کسب‌وکارها") { router.push("/tenants"); setMenuOpen(false); return; }
                   if (item.label === "پلن‌ها و اشتراک‌ها") { router.push("/plans"); setMenuOpen(false); return; }
                   if (item.label === "درخواست‌های آزمایشی") { router.push("/admin/trial-requests"); setMenuOpen(false); return; }
