@@ -71,7 +71,7 @@ export default function OwnerLoginPage() {
         <div className="auth-icon">{mode === "sms" ? <Phone size={23} /> : <LockKeyhole size={23} />}</div>
         <h1>ورود به کسب‌وکار</h1>
         <p className="auth-description">روش اصلی ورود، تأیید شماره موبایل با پیامک است. رمز عبور فقط روش جایگزین است.</p>
-        <div className="auth-form">
+        <div className="auth-methods">
           <div className="auth-switch">
             <button className={mode === "sms" ? "auth-submit" : "auth-secondary"} type="button" onClick={() => { setMode("sms"); setError(""); setNotice(""); setChallengeId(""); }}>ورود با پیامک</button>
             <button className={mode === "password" ? "auth-submit" : "auth-secondary"} type="button" onClick={() => { setMode("password"); setError(""); setNotice(""); setChallengeId(""); }}>ورود با رمز</button>
