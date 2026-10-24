@@ -46,7 +46,7 @@ export async function getTenantSqlPoolForUser(
   const result = await master.request()
     .input("userId", sql.BigInt, userId)
     .query(`
-      SELECT TOP (2)
+      SELECT TOP (1)
         t.TenantId, t.Status AS TenantStatus,
         td.DatabaseName, td.IsActive AS DatabaseIsActive, td.SchemaVersion
       FROM dbo.TenantUsers tu
