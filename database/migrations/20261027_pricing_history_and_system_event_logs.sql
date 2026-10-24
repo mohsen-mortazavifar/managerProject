@@ -48,6 +48,24 @@ WHERE NOT EXISTS(SELECT 1 FROM dbo.SubscriptionPlanPriceHistory h WHERE h.Subscr
 COMMIT TRANSACTION;
 GO
 
+CREATE OR ALTER TRIGGER dbo.TR_SubscriptionPlans_PriceHistory_Insert
+ON dbo.SubscriptionPlans
+AFTER INSERT
+AS
+BEGIN
+ SET NOCOUNT ON;
+ DECLARE @Now DATETIME2(3)=SYSUTCDATETIME();
+ INSERT INTO dbo.SubscriptionPlanPriceHistory(SubscriptionPlanId,BasePrice,DiscountPercent,ValidFrom,ChangeReason)
+ SELECT i.SubscriptionPlanId,i.Price,COALESCE(i.DiscountPercent,0),@Now,N'ایجاد پلن'
+ FROM inserted i
+ WHERE NOT EXISTS(SELECT 1 FROM dbo.SubscriptionPlanPriceHistory h WHERE h.SubscriptionPlanId=i.SubscriptionPlanId AND h.ValidTo IS NULL);
+ INSERT INTO dbo.SystemEventLogs(EventType,Severity,EntityType,EntityId,Message,CreatedAt)
+ SELECT N'SubscriptionPlan.Created',N'Info',N'SubscriptionPlan',CONVERT(NVARCHAR(100),i.SubscriptionPlanId),
+  CONCAT(N'پلن ایجاد شد: ',i.Name,N'؛ قیمت پایه: ',CONVERT(NVARCHAR(40),i.Price),N'؛ تخفیف: ',CONVERT(NVARCHAR(20),COALESCE(i.DiscountPercent,0)),N'٪'),@Now
+ FROM inserted i;
+END;
+GO
+
 CREATE OR ALTER TRIGGER dbo.TR_SubscriptionPlans_PriceHistory
 ON dbo.SubscriptionPlans
 AFTER UPDATE
