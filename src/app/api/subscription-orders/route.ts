@@ -47,31 +47,52 @@ export async function GET(request:Request){
 
 export async function POST(request:Request){
  const auth=await requireAuth(request);if(!auth.ok)return auth.response;
- if(auth.user.isSystemAdmin)return fail("مدیر سیستم نمی‌تواند از این مسیر برای کسب‌وکار سفارش ثبت کند.",403);
+ if(auth.user.isSystemAdmin)return fail("مدیر سیستم نمی‌تواند از این مسیر درخواست اشتراک ثبت کند.",403);
  let body:unknown;try{body=await request.json();}catch{return fail("بدنه درخواست معتبر نیست.",400);}
  const planId=(body as {subscriptionPlanId?:unknown}|null)?.subscriptionPlanId;
- if(typeof planId!=="string"||!/^[1-9]\d{0,18}$/.test(planId))return fail("شناسه پلن معتبر نیست.",400);
+ if(typeof planId!=="string"||!/^[1-9]\\d{0,18}$/.test(planId))return fail("شناسه پلن معتبر نیست.",400);
  try{
   const pool=await getSqlPool(),tenant=await getOwnerTenant(auth.user.userId);
-  if(!tenant)return fail("فقط مالک کسب‌وکار می‌تواند سفارش پلن ثبت کند.",403);
+  if(!tenant)return fail("فقط مالک کسب‌وکار می‌تواند درخواست اشتراک ثبت کند.",403);
   if(tenant.Status==="Suspended")return fail("کسب‌وکار تعلیق شده است و امکان سفارش ندارد.",403);
-  const result=await pool.request().input("tenantId",sql.BigInt,tenant.TenantId).input("planId",sql.BigInt,planId).query(`
+  const result=await pool.request().input("tenantId",sql.BigInt,tenant.TenantId).input("planId",sql.BigInt,planId).input("userId",sql.BigInt,auth.user.userId).query(`
    SET XACT_ABORT ON;
    BEGIN TRANSACTION;
-   DECLARE @Price DECIMAL(18,2),@DurationDays INT,@SubscriptionId BIGINT,@PaymentTransactionId BIGINT;
-   SELECT @Price=Price,@DurationDays=DurationDays FROM dbo.SubscriptionPlans WITH (UPDLOCK,HOLDLOCK)
+   DECLARE @Price DECIMAL(18,2),@DurationDays INT,@IsTrial BIT,@SubscriptionId BIGINT,@PaymentTransactionId BIGINT,@TrialRequestId BIGINT,@HasActive BIT,@HasReserved BIT;
+   SELECT @Price=Price,@DurationDays=DurationDays,@IsTrial=IsTrial FROM dbo.SubscriptionPlans WITH (UPDLOCK,HOLDLOCK)
    WHERE SubscriptionPlanId=@planId AND IsActive=1;
    IF @Price IS NULL THROW 51001,'PLAN_NOT_AVAILABLE',1;
-   INSERT INTO dbo.Subscriptions(TenantId,SubscriptionPlanId,Status,StartsAt,EndsAt,PriceAtSubscription,CreatedAt,UpdatedAt)
-   VALUES(@tenantId,@planId,N'PendingPayment',SYSUTCDATETIME(),DATEADD(day,@DurationDays,SYSUTCDATETIME()),@Price,SYSUTCDATETIME(),SYSUTCDATETIME());
-   SET @SubscriptionId=SCOPE_IDENTITY();
-   INSERT INTO dbo.PaymentTransactions(TenantId,SubscriptionId,Amount,Status,Gateway,CreatedAt)
-   VALUES(@tenantId,@SubscriptionId,@Price,N'Pending',N'Manual',SYSUTCDATETIME());
-   SET @PaymentTransactionId=SCOPE_IDENTITY();
-   COMMIT TRANSACTION;
-   SELECT @SubscriptionId AS SubscriptionId,@PaymentTransactionId AS PaymentTransactionId,@Price AS Amount;
+   SELECT @HasActive=CASE WHEN EXISTS(SELECT 1 FROM dbo.Subscriptions WITH (UPDLOCK,HOLDLOCK) WHERE TenantId=@tenantId AND Status=N'Active' AND EndsAt>SYSUTCDATETIME()) THEN 1 ELSE 0 END;
+   SELECT @HasReserved=CASE WHEN EXISTS(SELECT 1 FROM dbo.Subscriptions WITH (UPDLOCK,HOLDLOCK) WHERE TenantId=@tenantId AND Status=N'Reserved') THEN 1 ELSE 0 END;
+   IF @HasReserved=1 THROW 51005,'RESERVED_SUBSCRIPTION_EXISTS',1;
+   IF @IsTrial=1
+   BEGIN
+    IF EXISTS(SELECT 1 FROM dbo.TenantTrialRequests WITH (UPDLOCK,HOLDLOCK) WHERE TenantId=@tenantId)
+      THROW 51006,'TRIAL_ALREADY_REQUESTED',1;
+    INSERT INTO dbo.TenantTrialRequests(TenantId,SubscriptionPlanId,Status,RequestedAt)
+    VALUES(@tenantId,@planId,N'Pending',SYSUTCDATETIME());
+    SET @TrialRequestId=SCOPE_IDENTITY();
+    INSERT INTO dbo.Subscriptions(TenantId,SubscriptionPlanId,Status,StartsAt,EndsAt,PriceAtSubscription,CreatedAt,UpdatedAt)
+    VALUES(@tenantId,@planId,N'PendingApproval',SYSUTCDATETIME(),DATEADD(day,@DurationDays,SYSUTCDATETIME()),@Price,SYSUTCDATETIME(),SYSUTCDATETIME());
+    SET @SubscriptionId=SCOPE_IDENTITY();
+    UPDATE dbo.TenantTrialRequests SET SubscriptionId=@SubscriptionId WHERE TrialRequestId=@TrialRequestId;
+    COMMIT TRANSACTION;
+    SELECT @SubscriptionId AS SubscriptionId,CAST(NULL AS BIGINT) AS PaymentTransactionId,@Price AS Amount,N'PendingApproval' AS Status;
+   END
+   ELSE
+   BEGIN
+    IF @Price<=0 THROW 51007,'ZERO_PRICE_PLAN_MUST_BE_TRIAL',1;
+    INSERT INTO dbo.Subscriptions(TenantId,SubscriptionPlanId,Status,StartsAt,EndsAt,PriceAtSubscription,CreatedAt,UpdatedAt)
+    VALUES(@tenantId,@planId,N'PendingPayment',SYSUTCDATETIME(),DATEADD(day,@DurationDays,SYSUTCDATETIME()),@Price,SYSUTCDATETIME(),SYSUTCDATETIME());
+    SET @SubscriptionId=SCOPE_IDENTITY();
+    INSERT INTO dbo.PaymentTransactions(TenantId,SubscriptionId,Amount,Status,Gateway,CreatedAt)
+    VALUES(@tenantId,@SubscriptionId,@Price,N'Pending',N'Manual',SYSUTCDATETIME());
+    SET @PaymentTransactionId=SCOPE_IDENTITY();
+    COMMIT TRANSACTION;
+    SELECT @SubscriptionId AS SubscriptionId,@PaymentTransactionId AS PaymentTransactionId,@Price AS Amount,N'PendingPayment' AS Status;
+   END
   `);
   const row=result.recordset[0];
-  return NextResponse.json({order:{subscriptionId:String(row.SubscriptionId),paymentTransactionId:String(row.PaymentTransactionId),amount:Number(row.Amount),status:"PendingPayment"}},{status:201,headers:{"Cache-Control":"no-store"}});
- }catch(cause){const e=cause as {number?:number};if(e.number===51001)return fail("این پلن وجود ندارد یا برای سفارش جدید غیرفعال است.",409);return fail("ثبت سفارش انجام نشد. ساختار دیتابیس و اجرای Migration را بررسی کنید.",503);}
+  return NextResponse.json({order:{subscriptionId:String(row.SubscriptionId),paymentTransactionId:row.PaymentTransactionId==null?null:String(row.PaymentTransactionId),amount:Number(row.Amount),status:String(row.Status)}},{status:201,headers:{"Cache-Control":"no-store"}});
+ }catch(cause){const e=cause as {number?:number};if(e.number===51001)return fail("این پلن وجود ندارد یا برای سفارش جدید غیرفعال است.",409);if(e.number===51005)return fail("برای این کسب‌وکار از قبل یک اشتراک رزرو وجود دارد.",409);if(e.number===51006)return fail("پلن آزمایشی قبلاً برای این کسب‌وکار درخواست یا استفاده شده است.",409);if(e.number===51007)return fail("پلن صفر تومانی باید به‌عنوان پلن آزمایشی تعریف شود.",409);return fail("ثبت درخواست اشتراک انجام نشد. Migration جدید را اجرا و ساختار دیتابیس را بررسی کنید.",503);}
 }
