@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   const auth = await requireAuth(request);
   if (!auth.ok) return auth.response;
 
-  if (auth.user.isSystemAdmin) {
+  if (auth.user.isPlatformUser) {
     return NextResponse.json(
       { error: "این وضعیت مخصوص کاربران فضای کسب‌وکار است." },
       { status: 403, headers: { "Cache-Control": "no-store" } },
