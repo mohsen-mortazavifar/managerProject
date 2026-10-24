@@ -9,6 +9,7 @@ export type JwtUser = {
   email: string;
   fullName: string;
   isSystemAdmin: boolean;
+  isPlatformUser: boolean;
 };
 
 type JwtPayload = JwtUser & {
@@ -86,7 +87,8 @@ export function verifyAccessToken(token: string): JwtUser | null {
       typeof payload.userId !== "string" ||
       typeof payload.email !== "string" ||
       typeof payload.fullName !== "string" ||
-      typeof payload.isSystemAdmin !== "boolean"
+      typeof payload.isSystemAdmin !== "boolean" ||
+      typeof payload.isPlatformUser !== "boolean"
     ) return null;
 
     return {
@@ -94,6 +96,7 @@ export function verifyAccessToken(token: string): JwtUser | null {
       email: payload.email,
       fullName: payload.fullName,
       isSystemAdmin: payload.isSystemAdmin,
+      isPlatformUser: payload.isPlatformUser,
     };
   } catch {
     return null;
