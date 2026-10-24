@@ -55,6 +55,7 @@ export async function GET(request: Request) {
             u.FullName,
             u.Mobile,
             u.Email,
+            CASE WHEN u.PasswordHash IS NULL OR LTRIM(RTRIM(u.PasswordHash)) = N'' THEN 0 ELSE 1 END AS HasPassword,
             tu.IsOwner,
             tu.IsActive,
             tu.JoinedAt,
@@ -67,7 +68,7 @@ export async function GET(request: Request) {
             AND u.DeletedAt IS NULL
           GROUP BY
             tu.TenantUserId, u.UserId, u.FullName, u.Mobile,
-            u.Email, tu.IsOwner, tu.IsActive, tu.JoinedAt
+            u.Email, u.PasswordHash, tu.IsOwner, tu.IsActive, tu.JoinedAt
           ORDER BY tu.IsOwner DESC, u.FullName;
         `),
       pool.request().query(`
@@ -85,6 +86,7 @@ export async function GET(request: Request) {
         fullName: String(row.FullName),
         mobile: row.Mobile == null ? "" : String(row.Mobile),
         email: row.Email == null ? "" : String(row.Email),
+        hasPassword: Boolean(row.HasPassword),
         isOwner: Boolean(row.IsOwner),
         isActive: Boolean(row.IsActive),
         joinedAt: row.JoinedAt,
