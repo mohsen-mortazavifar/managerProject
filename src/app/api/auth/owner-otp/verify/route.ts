@@ -169,10 +169,6 @@ export async function POST(request: Request) {
           provisioning: { jobId: String(job.JobId), correlationId: String(job.CorrelationId), status: "Queued" },
         }, 201);
       }
-      console.log("[OTP ACCOUNT CHECK]", {
-        purpose: challenge.Purpose,
-        mobile,
-      });
       if (challenge.Purpose === "login") {
         const account = await new sql.Request(tx)
           .input("mobile", sql.NVarChar(40), mobile)
