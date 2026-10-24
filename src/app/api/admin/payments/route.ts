@@ -37,7 +37,7 @@ export async function PATCH(request:Request){
   const r=await pool.request().input("paymentId",sql.BigInt,input.paymentTransactionId).input("status",sql.NVarChar(30),input.status).input("gatewayTransactionId",sql.NVarChar(200),gatewayTransactionId||null).query(`
    SET XACT_ABORT ON;
    BEGIN TRANSACTION;
-   DECLARE @CurrentStatus NVARCHAR(30),@SubscriptionId BIGINT,@DurationDays INT,@PlanId BIGINT,@TenantId BIGINT,@StartsAt DATETIME2(3);
+   DECLARE @CurrentStatus NVARCHAR(30),@SubscriptionId BIGINT,@DurationDays INT,@PlanId BIGINT,@TenantId BIGINT,@StartsAt DATETIME2(3),@TargetStatus NVARCHAR(30);
    SELECT @CurrentStatus=pt.Status,@SubscriptionId=pt.SubscriptionId,@TenantId=pt.TenantId,@PlanId=s.SubscriptionPlanId
    FROM dbo.PaymentTransactions pt WITH (UPDLOCK,HOLDLOCK)
    INNER JOIN dbo.Subscriptions s ON s.SubscriptionId=pt.SubscriptionId
@@ -46,11 +46,12 @@ export async function PATCH(request:Request){
    IF @CurrentStatus<>N'Pending' THROW 51003,'PAYMENT_NOT_PENDING',1;
    IF @status=N'Paid'
    BEGIN
+    UPDATE dbo.Subscriptions SET Status=N'Expired',UpdatedAt=SYSUTCDATETIME() WHERE TenantId=@TenantId AND Status=N'Active' AND EndsAt<=SYSUTCDATETIME();
+    IF EXISTS(SELECT 1 FROM dbo.Subscriptions WHERE TenantId=@TenantId AND Status=N'Reserved') THROW 51005,'RESERVED_SUBSCRIPTION_EXISTS',1;
     SELECT @DurationDays=DurationDays FROM dbo.SubscriptionPlans WHERE SubscriptionPlanId=@PlanId;
-    SELECT @StartsAt=CASE WHEN MAX(EndsAt)>SYSUTCDATETIME() THEN MAX(EndsAt) ELSE SYSUTCDATETIME() END
-    FROM dbo.Subscriptions WHERE TenantId=@TenantId AND SubscriptionId<>@SubscriptionId AND Status=N'Active' AND EndsAt>SYSUTCDATETIME();
-    SET @StartsAt=COALESCE(@StartsAt,SYSUTCDATETIME());
-    UPDATE dbo.Subscriptions SET Status=N'Active',StartsAt=@StartsAt,EndsAt=DATEADD(day,@DurationDays,@StartsAt),UpdatedAt=SYSUTCDATETIME()
+    SELECT TOP(1) @StartsAt=EndsAt FROM dbo.Subscriptions WITH (UPDLOCK,HOLDLOCK) WHERE TenantId=@TenantId AND SubscriptionId<>@SubscriptionId AND Status=N'Active' AND EndsAt>SYSUTCDATETIME() ORDER BY EndsAt DESC;
+    IF @StartsAt IS NULL BEGIN SET @StartsAt=SYSUTCDATETIME(); SET @TargetStatus=N'Active'; END ELSE SET @TargetStatus=N'Reserved';
+    UPDATE dbo.Subscriptions SET Status=@TargetStatus,StartsAt=@StartsAt,EndsAt=DATEADD(day,@DurationDays,@StartsAt),UpdatedAt=SYSUTCDATETIME()
     WHERE SubscriptionId=@SubscriptionId;
    END
    ELSE IF @status=N'Failed'
@@ -63,5 +64,5 @@ export async function PATCH(request:Request){
    SELECT @TenantId AS TenantId,@SubscriptionId AS SubscriptionId,@status AS Status;
   `);
   return NextResponse.json({payment:{tenantId:String(r.recordset[0].TenantId),subscriptionId:String(r.recordset[0].SubscriptionId),status:String(r.recordset[0].Status)}},{headers:{"Cache-Control":"no-store"}});
- }catch(cause){const e=cause as {number?:number};if(e.number===51002)return fail("پرداخت پیدا نشد.",404);if(e.number===51003)return fail("فقط پرداخت در انتظار بررسی قابل تغییر است.",409);if(e.number===51004)return fail("برای بازپرداخت، ابتدا باید تراکنش پرداخت‌شده و گردش مالی تعریف شود.",409);return fail("به‌روزرسانی وضعیت پرداخت انجام نشد.",503);}
+ }catch(cause){const e=cause as {number?:number};if(e.number===51002)return fail("پرداخت پیدا نشد.",404);if(e.number===51003)return fail("فقط پرداخت در انتظار بررسی قابل تغییر است.",409);if(e.number===51004)return fail("برای بازپرداخت، ابتدا باید تراکنش پرداخت‌شده و گردش مالی تعریف شود.",409);if(e.number===51005)return fail("این کسب‌وکار از قبل اشتراک رزرو دارد؛ ابتدا وضعیت آن را مشخص کنید.",409);return fail("به‌روزرسانی وضعیت پرداخت انجام نشد.",503);}
 }
