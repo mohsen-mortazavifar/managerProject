@@ -23,7 +23,7 @@ export default function TenantDetailPage(){
    const d=await r.json(); if(r.status===401||r.status===403){sessionStorage.removeItem("repairMasterAccessToken");router.replace("/login");return}
    if(!r.ok)throw new Error(d.error||"دریافت اطلاعات ناموفق بود.");setData(d);setError("");
   }catch(e){setError(e instanceof Error?e.message:"ارتباط با سرور برقرار نشد.")}finally{setLoading(false)}},[tenantId,router]);
- useEffect(()=>{void load()},[load]);
+ useEffect(()=>{const id=window.setTimeout(()=>{void load()},0);return()=>window.clearTimeout(id)},[load]);
  async function changeStatus(status:"Active"|"Suspended"){
   if(!data)return;const action=status==="Suspended"?"معلق کردن":"فعال کردن";
   if(!window.confirm("آیا از "+action+" کسب‌وکار «"+data.tenant.name+"» مطمئن هستید؟"))return;
