@@ -45,6 +45,20 @@ export default function OnboardingPage() {
     }
     if (!quiet) setRefreshing(true);
     try {
+      const meResponse = await fetch("/api/auth/me", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      const meData = await meResponse.json() as { user?: { isPlatformUser?: boolean } };
+      if (meResponse.status === 401) {
+        sessionStorage.removeItem("repairMasterAccessToken");
+        router.replace("/owner-login");
+        return;
+      }
+      if (meResponse.ok && meData.user?.isPlatformUser) {
+        router.replace("/");
+        return;
+      }
       const response = await fetch("/api/tenants/current-status", {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
