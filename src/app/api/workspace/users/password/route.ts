@@ -52,8 +52,11 @@ export async function POST(request: Request) {
           AND u.DeletedAt IS NULL;
       `);
     const member = memberResult.recordset[0];
-    if (!member || Boolean(member.IsOwner) || !Boolean(member.IsActive) || !member.MobileVerifiedAt) {
+    if (!member || !Boolean(member.IsActive) || !member.MobileVerifiedAt) {
       return json({ error: "عضو فعال و تأییدشده‌ای برای این عملیات پیدا نشد." }, 404);
+    }
+    if (Boolean(member.IsOwner) && String(member.UserId) !== String(auth.user.userId)) {
+      return json({ error: "مالک فقط می‌تواند رمز حساب خودش را تنظیم کند." }, 403);
     }
     if (member.PasswordHash) {
       return json({ error: "این کاربر از قبل رمز عبور دارد؛ برای جلوگیری از تغییر رمز حساب مشترک، رمز فعلی بازنویسی نمی‌شود." }, 409);
@@ -72,7 +75,7 @@ export async function POST(request: Request) {
     if (Number(update.recordset[0]?.UpdatedCount ?? 0) !== 1) {
       return json({ error: "رمز عبور هم‌زمان تغییر کرده است؛ فهرست اعضا را تازه‌سازی کنید." }, 409);
     }
-    return json({ message: "رمز اولیه برای همکار ثبت شد. آن را به‌صورت امن در اختیار او قرار دهید." });
+    return json({ message: "رمز عبور ثبت شد. آن را به‌صورت امن در اختیار صاحب حساب قرار دهید." });
   } catch {
     return json({ error: "تعیین رمز عبور انجام نشد." }, 503);
   }
