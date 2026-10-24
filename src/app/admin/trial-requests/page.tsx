@@ -34,7 +34,7 @@ export default function AdminTrialRequestsPage() {
     finally { setLoading(false); }
   }, [router]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { const id = window.setTimeout(() => { void load(); }, 0); return () => window.clearTimeout(id); }, [load]);
 
   async function review(item: TrialRequest, decision: "Approved" | "Rejected") {
     const label = decision === "Approved" ? "تأیید" : "رد";
