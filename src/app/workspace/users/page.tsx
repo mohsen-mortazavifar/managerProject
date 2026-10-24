@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CircleUserRound, LogOut, Plus, RefreshCw, ShieldCheck, UserRoundX, Users } from "lucide-react";
 
 type Member = {
   tenantUserId: string; userId: string; fullName: string; mobile: string; email: string;
-  isOwner: boolean; isActive: boolean; joinedAt: string | null; roles: string[];
+  isOwner: boolean; isActive: boolean; hasPassword: boolean; joinedAt: string | null; roles: string[];
 };
 type Role = { roleId: string; name: string; description: string };
 type Invitation = { invitationId: string; roleName: string; expiresAt: string; acceptedAt: string | null; revokedAt: string | null; createdAt: string; isExpired: boolean };
@@ -28,6 +28,10 @@ export default function WorkspaceUsersPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [invitations, setInvitations] = useState<Invitation[]>([]); const [inviteUrl, setInviteUrl] = useState("");  const [inviteBusy, setInviteBusy] = useState(false);
+  const [passwordTarget, setPasswordTarget] = useState<Member | null>(null);
+  const [initialPassword, setInitialPassword] = useState("");
+  const [confirmInitialPassword, setConfirmInitialPassword] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
 
   const load = useCallback(async () => {
     const token = sessionStorage.getItem("repairMasterAccessToken");
@@ -118,6 +122,27 @@ export default function WorkspaceUsersPage() {
     await updateMember(member, { isActive: !member.isActive });
   }
 
+  async function setMemberPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!passwordTarget) return;
+    const token = sessionStorage.getItem("repairMasterAccessToken");
+    if (!token) { router.replace("/owner-login"); return; }
+    setPasswordBusy(true); setError(""); setNotice("");
+    try {
+      const response = await fetch("/api/workspace/users/password", {
+        method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantUserId: passwordTarget.tenantUserId, password: initialPassword, confirmPassword: confirmInitialPassword }),
+      });
+      const result = await response.json() as ResponseData;
+      if (!response.ok) throw new Error(result.error || "تعیین رمز عبور انجام نشد.");
+      setNotice(result.message || "رمز اولیه ثبت شد.");
+      setPasswordTarget(null); setInitialPassword(""); setConfirmInitialPassword("");
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "تعیین رمز عبور انجام نشد."); }
+    finally { setPasswordBusy(false); }
+  }
+
+
   async function logout() {
     const token = sessionStorage.getItem("repairMasterAccessToken");
     if (token) {
@@ -180,7 +205,7 @@ export default function WorkspaceUsersPage() {
                 <td dir="ltr" className="users-mobile">{member.mobile || "—"}</td>
                 <td>{member.roles.length ? member.roles.map((r) => roleLabels[r] || r).join("، ") : "بدون نقش"}</td>
                 <td><span className={`users-status ${member.isActive ? "users-status-active" : "users-status-off"}`}>{member.isActive ? "فعال" : "غیرفعال"}</span></td>
-                <td>{member.isOwner ? <span className="users-owner-label">غیرقابل تغییر</span> : <div className="users-member-actions"><select aria-label={`نقش ${member.fullName}`} value={member.roles[0] || "TenantUser"} disabled={changingId === member.tenantUserId} onChange={(e) => void updateMember(member, { roleName: e.target.value })}>{roles.filter((r) => ["TenantManager", "TenantUser"].includes(r.name)).map((r) => <option key={r.roleId} value={r.name}>{roleLabels[r.name] || r.name}</option>)}</select><button className={`users-toggle ${member.isActive ? "users-toggle-off" : "users-toggle-on"}`} disabled={changingId === member.tenantUserId} onClick={() => void toggleMember(member)}><UserRoundX size={14} />{changingId === member.tenantUserId ? "در حال ثبت..." : member.isActive ? "غیرفعال‌کردن" : "فعال‌کردن"}</button></div>}</td>
+                <td>{member.isOwner ? <span className="users-owner-label">غیرقابل تغییر</span> : <div className="users-member-actions"><select aria-label={`نقش ${member.fullName}`} value={member.roles[0] || "TenantUser"} disabled={changingId === member.tenantUserId || passwordBusy} onChange={(e) => void updateMember(member, { roleName: e.target.value })}>{roles.filter((r) => ["TenantManager", "TenantUser"].includes(r.name)).map((r) => <option key={r.roleId} value={r.name}>{roleLabels[r.name] || r.name}</option>)}</select><button className={`users-toggle ${member.isActive ? "users-toggle-off" : "users-toggle-on"}`} disabled={changingId === member.tenantUserId} onClick={() => void toggleMember(member)}><UserRoundX size={14} />{changingId === member.tenantUserId ? "در حال ثبت..." : member.isActive ? "غیرفعال‌کردن" : "فعال‌کردن"}</button>{member.hasPassword ? <span className="users-owner-label">رمز ثبت شده</span> : <button type="button" className="users-primary" onClick={() => { setPasswordTarget(member); setInitialPassword(""); setConfirmInitialPassword(""); }} disabled={!member.isActive || passwordBusy}>تعیین رمز اولیه</button>}{passwordTarget?.tenantUserId === member.tenantUserId && <form className="users-invite-link" onSubmit={(e) => void setMemberPassword(e)}><label>رمز اولیه (حداقل ۱۲ نویسه)</label><input type="password" autoComplete="new-password" required minLength={12} maxLength={1024} value={initialPassword} onChange={(e) => setInitialPassword(e.target.value)} /><label>تکرار رمز</label><input type="password" autoComplete="new-password" required minLength={12} maxLength={1024} value={confirmInitialPassword} onChange={(e) => setConfirmInitialPassword(e.target.value)} /><button className="users-primary" type="submit" disabled={passwordBusy}>{passwordBusy ? "در حال ذخیره..." : "ذخیره رمز"}</button><button className="users-toggle" type="button" onClick={() => setPasswordTarget(null)}>انصراف</button></form>}</div>}</td>
               </tr>)}</tbody>
             </table></div>
           )}
