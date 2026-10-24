@@ -24,6 +24,7 @@ export async function PATCH(request:Request){
   if(!Boolean(existing.recordset[0].IsPlatformUser) && roleCodes===null)return NextResponse.json({error:"این حساب هنوز به‌عنوان کاربر داخلی پنل ثبت نشده است. ابتدا نقش‌های داخلی را صریحاً اختصاص دهید."},{status:400});
   const tx=await pool.transaction();try{await tx.begin();
    const oldActive=Boolean(existing.recordset[0].IsActive);
+   const oldPlatformUser=Boolean(existing.recordset[0].IsPlatformUser);
    const oldRolesResult=await tx.request().input("userId",sql.BigInt,userId).query(`SELECT r.Code FROM dbo.SystemUserRoles ur INNER JOIN dbo.SystemRoles r ON r.SystemRoleId=ur.SystemRoleId WHERE ur.UserId=@userId ORDER BY r.Code;`);
    const oldRoles=oldRolesResult.recordset.map((row: {Code:string})=>String(row.Code)).sort();
    if(x.isActive!==undefined && x.isActive!==oldActive)await tx.request().input("userId",sql.BigInt,userId).input("isActive",sql.Bit,x.isActive).query(`UPDATE dbo.Users SET IsActive=@isActive WHERE UserId=@userId;`);
@@ -34,12 +35,15 @@ export async function PATCH(request:Request){
    }
    const newActive=x.isActive===undefined?oldActive:x.isActive;
    const newRoles=roleCodes===null?oldRoles:[...roleCodes].sort();
+   const newPlatformUser=roleCodes===null?oldPlatformUser:roleCodes.length>0;
    const changedActive=newActive!==oldActive;
    const changedRoles=roleCodes!==null && JSON.stringify(oldRoles)!==JSON.stringify(newRoles);
-   if(changedActive || changedRoles){
-    const eventType=changedActive&&changedRoles?"SystemUser.Updated":changedActive?"SystemUser.StatusChanged":"SystemUser.RolesChanged";
-    const message=changedActive&&changedRoles?"وضعیت و نقش‌های کاربر پنل تغییر کرد":changedActive?(newActive?"کاربر پنل فعال شد":"کاربر پنل غیرفعال شد"):"نقش‌های کاربر پنل تغییر کرد";
-    const details=JSON.stringify({userId,fullName:String(existing.recordset[0].FullName),oldIsActive:oldActive,newIsActive:newActive,oldRoleCodes:oldRoles,newRoleCodes:newRoles});
+   const changedPlatformUser=newPlatformUser!==oldPlatformUser;
+   if(changedActive || changedRoles || changedPlatformUser){
+    const changeCount=Number(changedActive)+Number(changedRoles)+Number(changedPlatformUser);
+    const eventType=changeCount>1?"SystemUser.Updated":changedActive?"SystemUser.StatusChanged":changedPlatformUser?"SystemUser.PlatformAccessChanged":"SystemUser.RolesChanged";
+    const message=changeCount>1?"وضعیت، دسترسی پنل یا نقش‌های کاربر تغییر کرد":changedActive?(newActive?"کاربر پنل فعال شد":"کاربر پنل غیرفعال شد"):changedPlatformUser?(newPlatformUser?"دسترسی کاربر به پنل اصلی فعال شد":"دسترسی کاربر به پنل اصلی غیرفعال شد"):"نقش‌های کاربر پنل تغییر کرد";
+    const details=JSON.stringify({userId,fullName:String(existing.recordset[0].FullName),oldIsActive:oldActive,newIsActive:newActive,oldIsPlatformUser:oldPlatformUser,newIsPlatformUser:newPlatformUser,oldRoleCodes:oldRoles,newRoleCodes:newRoles});
     await tx.request().input("eventType",sql.NVarChar(80),eventType).input("entityId",sql.NVarChar(100),userId).input("message",sql.NVarChar(1000),message).input("details",sql.NVarChar(sql.MAX),details).input("actorUserId",sql.BigInt,auth.user.userId).query(`INSERT INTO dbo.SystemEventLogs(EventType,Severity,EntityType,EntityId,Message,Details,ActorUserId,CreatedAt) VALUES(@eventType,N'Info',N'SystemUser',@entityId,@message,@details,@actorUserId,SYSUTCDATETIME());`);
    }
    await tx.commit();
