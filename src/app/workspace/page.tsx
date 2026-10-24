@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, CircleUserRound, ClipboardList, CreditCard, LogOut, RefreshCw, Settings, ShieldCheck, Wrench } from "lucide-react";
+import { Building2, CircleUserRound, ClipboardList, CreditCard, LogOut, RefreshCw, Settings, ShieldCheck, Wrench, LockKeyhole } from "lucide-react";
 
 type StatusResponse = {
   error?: string;
@@ -135,6 +135,9 @@ export default function WorkspacePage() {
             <span><Settings size={21} /></span><div><h3>تنظیمات فضای کاری</h3><p>تنظیمات پایه و دسترسی اعضا</p></div><small>در نقشه راه</small>
           </article>
         </section>
+        <button type="button" className="workspace-module-card workspace-module-card-link" onClick={() => router.push("/workspace/security/password")} aria-label="تنظیم رمز عبور پشتیبان">
+          <span><LockKeyhole size={21} /></span><div><h3>رمز عبور پشتیبان</h3><p>ورود جایگزین در صورت در دسترس نبودن پیامک</p></div><small>تنظیم رمز</small>
+        </button>
         <footer className="workspace-footer">این نسخه اولیه پنل مالک است؛ ماژول‌های عملیاتی هنوز به‌صورت کامل فعال نشده‌اند.</footer>
       </section>
     </main>
