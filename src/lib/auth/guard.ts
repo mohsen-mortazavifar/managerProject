@@ -45,7 +45,7 @@ export async function requireAuth(request: Request): Promise<AuthGuardResult> {
     const result = await pool.request()
       .input("userId", sql.BigInt, tokenUser.userId)
       .query(`
-        SELECT TOP (1) UserId, Email, FullName, IsSystemAdmin
+        SELECT TOP (1) UserId, Email, FullName, IsSystemAdmin, IsPlatformUser
         FROM dbo.Users
         WHERE UserId = @userId AND IsActive = 1 AND DeletedAt IS NULL;
       `);
@@ -62,6 +62,7 @@ export async function requireAuth(request: Request): Promise<AuthGuardResult> {
     }
 
     const isSystemAdmin = Boolean(user.IsSystemAdmin);
+    const isPlatformUser = Boolean(user.IsPlatformUser) || isSystemAdmin;
     const pathname = new URL(request.url).pathname;
     // Authentication and account/workspace setup must remain available before
     // the first subscription is purchased or after it expires.
@@ -76,7 +77,7 @@ export async function requireAuth(request: Request): Promise<AuthGuardResult> {
     // System administrators manage the platform independently of customer plans.
     // Tenant users can access account, onboarding status, plan catalogue and orders
     // without an active subscription. Business APIs remain subscription-gated.
-    if (!isSystemAdmin && !subscriptionExemptPaths.has(pathname) && !pathname.startsWith("/api/admin/")) {
+    if (!isPlatformUser && !subscriptionExemptPaths.has(pathname) && !pathname.startsWith("/api/admin/")) {
       // Apply subscription lifecycle transitions on demand before checking access:
       // expire ended subscriptions and activate a reserved subscription whose
       // scheduled start time has arrived. The transaction and row locks prevent
@@ -175,6 +176,7 @@ export async function requireAuth(request: Request): Promise<AuthGuardResult> {
         email: String(user.Email),
         fullName: String(user.FullName),
         isSystemAdmin,
+        isPlatformUser,
       },
     };
   } catch {
