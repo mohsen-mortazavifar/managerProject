@@ -24,16 +24,14 @@ export async function POST(request: Request) {
 
   const token = getBearerToken(request);
   const user = token ? verifyAccessToken(token) : null;
-  if (!user || user.isSystemAdmin || user.isPlatformUser) {
-    return respond({ error: "Invalid access token." }, 401);
-  }
+  if (!user || user.isSystemAdmin) return respond({ error: "Invalid access token." }, 401);
 
   let body: unknown;
   try { body = await request.json(); } catch { return respond({ error: "Invalid request." }, 400); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return respond({ error: "Invalid request." }, 400);
   const input = body as { tenantId?: unknown; tenantDatabaseId?: unknown };
-  if (typeof input.tenantId !== "string" || !/^\d{1,19}$/.test(input.tenantId) ||
-      typeof input.tenantDatabaseId !== "string" || !/^\d{1,19}$/.test(input.tenantDatabaseId)) {
+  if (typeof input.tenantId !== "string" || !/^\\d{1,19}$/.test(input.tenantId) ||
+      typeof input.tenantDatabaseId !== "string" || !/^\\d{1,19}$/.test(input.tenantDatabaseId)) {
     return respond({ error: "Invalid tenant database request." }, 400);
   }
 
@@ -44,7 +42,9 @@ export async function POST(request: Request) {
       .input("tenantId", sql.BigInt, input.tenantId)
       .input("tenantDatabaseId", sql.BigInt, input.tenantDatabaseId)
       .query(`
-        SELECT TOP (1) td.ConnectionStringEncrypted, td.ServerName, td.DatabaseName
+        SELECT TOP (1)
+          td.TenantDatabaseId, td.ServerName, td.DatabaseName,
+          td.SqlLoginName, td.SqlPasswordEncrypted
         FROM dbo.TenantUsers tu
         INNER JOIN dbo.Tenants t ON t.TenantId = tu.TenantId
         INNER JOIN dbo.TenantDatabases td ON td.TenantId = t.TenantId
@@ -57,29 +57,36 @@ export async function POST(request: Request) {
           AND td.IsActive = 1;
       `);
 
-    const encrypted = result.recordset[0]?.ConnectionStringEncrypted;
-    if (typeof encrypted !== "string" || !encrypted.trim()) {
-      return respond({ error: "Tenant database connection is not configured for the current encryption format." }, 503);
+    const row = result.recordset[0];
+    if (!row) return respond({ error: "Tenant database access is not active for this user." }, 403);
+    if (typeof row.SqlLoginName !== "string" || !row.SqlLoginName.trim() ||
+        typeof row.SqlPasswordEncrypted !== "string" || !row.SqlPasswordEncrypted.trim()) {
+      return respond({ error: "Tenant-specific SQL credentials have not been provisioned." }, 503);
     }
 
-    const connectionConfig = JSON.parse(decryptTenantConnectionPayload(encrypted)) as {
-      server?: unknown; port?: unknown; database?: unknown; user?: unknown; password?: unknown;
-      options?: { encrypt?: unknown; trustServerCertificate?: unknown };
-    };
-    const row = result.recordset[0];
-    if (typeof connectionConfig.server !== "string" ||
-        connectionConfig.server.toLowerCase() !== String(row.ServerName ?? "").trim().toLowerCase() ||
-        typeof connectionConfig.database !== "string" ||
-        connectionConfig.database !== String(row.DatabaseName ?? "") ||
-        typeof connectionConfig.user !== "string" || !connectionConfig.user ||
-        typeof connectionConfig.password !== "string" || !connectionConfig.password ||
-        typeof connectionConfig.port !== "number" || !Number.isInteger(connectionConfig.port) ||
-        connectionConfig.port < 1 || connectionConfig.port > 65535 ||
-        typeof connectionConfig.options?.encrypt !== "boolean" ||
-        typeof connectionConfig.options?.trustServerCertificate !== "boolean") {
-      return respond({ error: "Stored tenant connection configuration is invalid." }, 503);
+    const server = String(row.ServerName ?? "").trim();
+    const database = String(row.DatabaseName ?? "").trim();
+    const port = process.env.DB_PORT ? Number(process.env.DB_PORT) : 1433;
+    const password = decryptTenantConnectionPayload(row.SqlPasswordEncrypted);
+
+    if (!server || !/^[A-Za-z0-9_$-]{1,128}$/.test(database) ||
+        !Number.isInteger(port) || port < 1 || port > 65535 || !password) {
+      return respond({ error: "Stored tenant SQL credentials are invalid." }, 503);
     }
-    return respond({ connectionConfig });
+
+    return respond({
+      connectionConfig: {
+        server,
+        port,
+        database,
+        user: row.SqlLoginName,
+        password,
+        options: {
+          encrypt: process.env.DB_ENCRYPT !== "false",
+          trustServerCertificate: process.env.DB_TRUST_SERVER_CERTIFICATE === "true",
+        },
+      },
+    });
   } catch (error) {
     console.error("Tenant connection resolution failed", error instanceof Error ? error.message : "Unknown error");
     return respond({ error: "Tenant database connection could not be resolved." }, 503);
