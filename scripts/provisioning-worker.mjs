@@ -208,7 +208,7 @@ async function processJob(pool, job, migration, checksum) {
     await writeLog(pool, job, "Migrating", "Migrating", "Applying tenant database schema.");
     await applyInitialMigration(databaseName, serverName, migration, checksum);
 
-    const encryptedConnectionString = encryptTenantConnectionPayload(buildTenantConnectionPayload(databaseName, serverName));
+    const encryptedConnectionPayload = encryptTenantConnectionPayload(buildTenantConnectionPayload(databaseName, serverName));
     const tx = new sql.Transaction(pool);
     await tx.begin();
     try {
@@ -217,7 +217,7 @@ async function processJob(pool, job, migration, checksum) {
         .input("tenantDatabaseId", sql.BigInt, job.TenantDatabaseId)
         .input("jobId", sql.UniqueIdentifier, job.JobId)
         .input("schemaVersion", sql.NVarChar(50), "V1_InitialSchema")
-        .input("connectionStringEncrypted", sql.NVarChar(sql.MAX), encryptedConnectionString)
+        .input("connectionStringEncrypted", sql.NVarChar(sql.MAX), encryptedConnectionPayload)
         .query(`
           UPDATE dbo.TenantDatabases
           SET IsActive = 1, SchemaVersion = @schemaVersion, ConnectionStringEncrypted = @connectionStringEncrypted, UpdatedAt = SYSUTCDATETIME()
