@@ -13,7 +13,7 @@ function getKey() {
 }
 
 export function encryptTenantConnectionPayload(plaintext) {
-  if (typeof plaintext !== "string" || !plaintext.trim()) throw new Error("Connection string is empty.");
+  if (typeof plaintext !== "string" || !plaintext.trim()) throw new Error("Connection payload is empty.");
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv("aes-256-gcm", getKey(), iv);
   const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
