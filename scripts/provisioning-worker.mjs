@@ -151,7 +151,7 @@ function buildTenantConnectionPayload(databaseName, serverName) {
 }
 
 async function ensureDatabase(name, serverName) {
-  const master = await connect("master", serverName);
+  const master = await connect("master", serverName, process.env.DB_USER, process.env.DB_PASSWORD, process.env.TENANT_DB_PORT || process.env.DB_PORT);
   try {
     const exists = await master.request()
       .input("databaseName", sql.NVarChar(128), name)
@@ -165,7 +165,7 @@ async function ensureDatabase(name, serverName) {
 }
 
 async function applyInitialMigration(name, serverName, script, checksum) {
-  const tenantPool = await connect(name, serverName);
+  const tenantPool = await connect(name, serverName, process.env.DB_USER, process.env.DB_PASSWORD, process.env.TENANT_DB_PORT || process.env.DB_PORT);
   try {
     const existing = await tenantPool.request().query(`
       IF OBJECT_ID(N'dbo.__SchemaVersions', N'U') IS NOT NULL
