@@ -1,5 +1,5 @@
 import sql from "mssql";
-import { createHash, randomUUID } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -135,6 +135,105 @@ async function ensureDatabase(name) {
   }
 }
 
+function credentialEncryptionKey() {
+  const value = process.env.TENANT_DB_CREDENTIALS_ENCRYPTION_KEY || "";
+  if (!/^[a-fA-F0-9]{64}$/.test(value)) {
+    throw new Error("TENANT_DB_CREDENTIALS_ENCRYPTION_KEY must be a 32-byte hex key.");
+  }
+  return Buffer.from(value, "hex");
+}
+
+function encryptCredential(value) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", credentialEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  return `v1:${iv.toString("hex")}:${cipher.getAuthTag().toString("hex")}:${encrypted.toString("hex")}`;
+}
+
+function decryptCredential(value) {
+  const parts = String(value || "").split(":");
+  if (parts.length !== 4 || parts[0] !== "v1") throw new Error("INVALID_STORED_TENANT_CREDENTIAL");
+  const decipher = createDecipheriv("aes-256-gcm", credentialEncryptionKey(), Buffer.from(parts[1], "hex"));
+  decipher.setAuthTag(Buffer.from(parts[2], "hex"));
+  return Buffer.concat([
+    decipher.update(Buffer.from(parts[3], "hex")),
+    decipher.final(),
+  ]).toString("utf8");
+}
+
+function quoteSqlIdentifier(value) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_]{1,128}$/.test(value)) {
+    throw new Error("INVALID_SQL_LOGIN_NAME");
+  }
+  return `[${value.replace(/]/g, "]]")}]`;
+}
+
+function quoteSqlLiteral(value) {
+  return "N'" + String(value).replace(/'/g, "''") + "'";
+}
+
+async function provisionTenantSqlCredentials(masterPool, databaseName, job) {
+  // A dedicated SQL Server login is created for each tenant database. The
+  // application password is encrypted at rest in Repair_Master metadata.
+  const suffix = databaseName.slice("Tenant_T_".length);
+  const loginName = `tenant_${suffix.toLowerCase()}`;
+  const password = randomBytes(36).toString("base64url");
+  const login = quoteSqlIdentifier(loginName);
+  const db = quoteDatabaseName(databaseName);
+
+  const master = await connect("master");
+  try {
+    const loginExists = await master.request()
+      .input("loginName", sql.NVarChar(128), loginName)
+      .query("SELECT 1 AS Found FROM sys.sql_logins WHERE name = @loginName;");
+    const passwordSql = quoteSqlLiteral(password);
+    if (loginExists.recordset.length) {
+      await master.request().query(`ALTER LOGIN ${login} WITH PASSWORD = ${passwordSql};`);
+    } else {
+      await master.request().query(`CREATE LOGIN ${login} WITH PASSWORD = ${passwordSql}, CHECK_POLICY = ON, CHECK_EXPIRATION = OFF;`);
+    }
+
+    const tenant = await connect(databaseName);
+    try {
+      const userExists = await tenant.request()
+        .input("loginName", sql.NVarChar(128), loginName)
+        .query("SELECT 1 AS Found FROM sys.database_principals WHERE name = @loginName;");
+      if (!userExists.recordset.length) {
+        await tenant.request().query(`CREATE USER ${login} FOR LOGIN ${login};`);
+      }
+      await tenant.request().query(`
+        ALTER ROLE [db_datareader] ADD MEMBER ${login};
+        ALTER ROLE [db_datawriter] ADD MEMBER ${login};
+        GRANT EXECUTE ON SCHEMA::[core] TO ${login};
+        GRANT EXECUTE ON SCHEMA::[crm] TO ${login};
+        GRANT EXECUTE ON SCHEMA::[repair] TO ${login};
+        GRANT EXECUTE ON SCHEMA::[inventory] TO ${login};
+        GRANT EXECUTE ON SCHEMA::[files] TO ${login};
+        GRANT EXECUTE ON SCHEMA::[notification] TO ${login};
+      `);
+    } finally {
+      await tenant.close();
+    }
+  } finally {
+    await master.close();
+  }
+
+  const encryptedPassword = encryptCredential(password);
+  await masterPool.request()
+    .input("tenantId", sql.BigInt, job.TenantId)
+    .input("tenantDatabaseId", sql.BigInt, job.TenantDatabaseId)
+    .input("loginName", sql.NVarChar(128), loginName)
+    .input("encryptedPassword", sql.NVarChar(1024), encryptedPassword)
+    .query(`
+      UPDATE dbo.TenantDatabases
+      SET SqlLoginName = @loginName,
+          SqlPasswordEncrypted = @encryptedPassword,
+          UpdatedAt = SYSUTCDATETIME()
+      WHERE TenantDatabaseId = @tenantDatabaseId AND TenantId = @tenantId;
+      IF @@ROWCOUNT <> 1 THROW 51002, 'Tenant SQL credentials metadata update failed.', 1;
+    `);
+}
+
 async function applyInitialMigration(name, script, checksum) {
   const tenantPool = await connect(name);
   try {
@@ -175,6 +274,8 @@ async function processJob(pool, job, migration, checksum) {
     await writeLog(pool, job, "CreatingDatabase", "CreatingDatabase", "Creating tenant database.");
     const databaseName = await getDatabaseName(pool, job);
     await ensureDatabase(databaseName);
+    await writeLog(pool, job, "CreatingCredentials", "CreatingCredentials", "Creating dedicated SQL credentials for tenant database.");
+    await provisionTenantSqlCredentials(pool, databaseName, job);
 
     await writeLog(pool, job, "Migrating", "Migrating", "Applying tenant database schema.");
     await applyInitialMigration(databaseName, migration, checksum);
