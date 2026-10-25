@@ -130,20 +130,24 @@ async function getDatabaseInfo(pool, job) {
   return { databaseName: row.DatabaseName, serverName };
 }
 
-function odbcValue(value) {
-  return `{${String(value).replace(/}/g, "}}")}}`;
-}
-
-function buildTenantConnectionString(databaseName, serverName) {
+function buildTenantConnectionPayload(databaseName, serverName) {
   const user = process.env.TENANT_DB_USER;
   const password = process.env.TENANT_DB_PASSWORD;
   const portValue = process.env.TENANT_DB_PORT || process.env.DB_PORT || "1433";
   const port = Number(portValue);
   if (!user || !password) throw new Error("TENANT_DB_USER and TENANT_DB_PASSWORD must be configured for tenant application access.");
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("TENANT_DB_PORT is invalid.");
-  const encrypt = process.env.DB_ENCRYPT !== "false";
-  const trust = process.env.DB_TRUST_SERVER_CERTIFICATE === "true";
-  return `Server=${odbcValue(serverName)},${port};Database=${odbcValue(databaseName)};User Id=${odbcValue(user)};Password=${odbcValue(password)};Encrypt=${encrypt ? "true" : "false"};TrustServerCertificate=${trust ? "true" : "false"};`;
+  return JSON.stringify({
+    server: serverName,
+    port,
+    database: databaseName,
+    user,
+    password,
+    options: {
+      encrypt: process.env.DB_ENCRYPT !== "false",
+      trustServerCertificate: process.env.DB_TRUST_SERVER_CERTIFICATE === "true",
+    },
+  });
 }
 
 async function ensureDatabase(name, serverName) {
@@ -204,7 +208,7 @@ async function processJob(pool, job, migration, checksum) {
     await writeLog(pool, job, "Migrating", "Migrating", "Applying tenant database schema.");
     await applyInitialMigration(databaseName, serverName, migration, checksum);
 
-    const encryptedConnectionString = encryptTenantConnectionString(buildTenantConnectionString(databaseName, serverName));
+    const encryptedConnectionString = encryptTenantConnectionString(buildTenantConnectionPayload(databaseName, serverName));
     const tx = new sql.Transaction(pool);
     await tx.begin();
     try {
