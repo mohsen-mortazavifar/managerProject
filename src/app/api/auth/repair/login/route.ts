@@ -57,11 +57,20 @@ export async function POST(request: Request) {
     }
 
     const found = await pool.request().input("userId", sql.BigInt, user.UserId).query(`
+      ;WITH ActiveTenantDatabases AS (
+        SELECT TenantDatabaseId, TenantId, DatabaseName, ServerName, SchemaVersion, CreatedAt,
+          ROW_NUMBER() OVER (
+            PARTITION BY TenantId
+            ORDER BY CreatedAt DESC, TenantDatabaseId DESC
+          ) AS RowNumber
+        FROM dbo.TenantDatabases
+        WHERE IsActive = 1
+      )
       SELECT tu.TenantUserId, tu.TenantId, tu.IsOwner, t.Name AS TenantName, t.Code AS TenantCode,
         td.TenantDatabaseId, td.DatabaseName, td.ServerName, td.SchemaVersion
       FROM dbo.TenantUsers tu
       INNER JOIN dbo.Tenants t ON t.TenantId=tu.TenantId
-      INNER JOIN dbo.TenantDatabases td ON td.TenantId=t.TenantId AND td.IsActive=1
+      INNER JOIN ActiveTenantDatabases td ON td.TenantId=t.TenantId AND td.RowNumber=1
       WHERE tu.UserId=@userId AND tu.IsActive=1 AND t.Status=N'Active' AND t.DeletedAt IS NULL
       ORDER BY tu.IsOwner DESC, tu.TenantUserId;
     `);
