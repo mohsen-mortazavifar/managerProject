@@ -158,17 +158,6 @@ function encryptCredential(value) {
   return ["v1", iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), encrypted.toString("base64url")].join(".");
 }
 
-function decryptCredential(value) {
-  const parts = String(value || "").split(":");
-  if (parts.length !== 4 || parts[0] !== "v1") throw new Error("INVALID_STORED_TENANT_CREDENTIAL");
-  const decipher = createDecipheriv("aes-256-gcm", credentialEncryptionKey(), Buffer.from(parts[1], "hex"));
-  decipher.setAuthTag(Buffer.from(parts[2], "hex"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(parts[3], "hex")),
-    decipher.final(),
-  ]).toString("utf8");
-}
-
 function quoteSqlIdentifier(value) {
   if (typeof value !== "string" || !/^[A-Za-z0-9_]{1,128}$/.test(value)) {
     throw new Error("INVALID_SQL_LOGIN_NAME");
@@ -180,7 +169,7 @@ function quoteSqlLiteral(value) {
   return "N'" + String(value).replace(/'/g, "''") + "'";
 }
 
-async function provisionTenantSqlCredentials(masterPool, databaseName, job) {
+async function provisionTenantSqlCredentials(masterPool, databaseName, job, serverName) {
   // A dedicated SQL Server login is created for each tenant database. The
   // application password is encrypted at rest in Repair_Master metadata.
   const suffix = databaseName.slice("Tenant_T_".length);
@@ -199,7 +188,6 @@ async function provisionTenantSqlCredentials(masterPool, databaseName, job) {
   }
   const password = passwordValues.join("");
   const login = quoteSqlIdentifier(loginName);
-  const db = quoteDatabaseName(databaseName);
 
   const master = await connect("master", serverName);
   try {
