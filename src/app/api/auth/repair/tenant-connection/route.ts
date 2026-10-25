@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 
   const token = getBearerToken(request);
   const user = token ? verifyAccessToken(token) : null;
-  if (!user || user.isSystemAdmin) return respond({ error: "Invalid access token." }, 401);
+  if (!user || user.isSystemAdmin || user.isPlatformUser) return respond({ error: "Invalid access token." }, 401);
 
   let body: unknown;
   try { body = await request.json(); } catch { return respond({ error: "Invalid request." }, 400); }
