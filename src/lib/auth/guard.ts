@@ -72,6 +72,7 @@ export async function requireAuth(request: Request): Promise<AuthGuardResult> {
       "/api/available-plans",
       "/api/subscription-orders",
       "/api/tenants/current-status",
+      "/api/auth/owner-password/set",
     ]);
 
     // System administrators manage the platform independently of customer plans.
