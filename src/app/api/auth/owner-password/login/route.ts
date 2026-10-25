@@ -48,6 +48,21 @@ export async function POST(request: Request) {
       return respond({ error: "شماره موبایل یا رمز عبور صحیح نیست." }, 401);
     }
 
+    const ownerMembership = await pool.request().input("userId", sql.BigInt, row.UserId).query(`
+      SELECT TOP (1) 1 AS IsOwner
+      FROM dbo.TenantUsers tu
+      INNER JOIN dbo.Tenants t ON t.TenantId = tu.TenantId
+      WHERE tu.UserId = @userId
+        AND tu.IsOwner = 1
+        AND tu.IsActive = 1
+        AND t.DeletedAt IS NULL
+        AND t.Status = N'Active';
+    `);
+    if (!ownerMembership.recordset.length) {
+      await recordLoginAttempt(mobile, null, false, request);
+      return respond({ error: "ورود با رمز پشتیبان فقط برای مالک فعال کسب‌وکار مجاز است." }, 403);
+    }
+
     const user = {
       userId: String(row.UserId),
       email: String(row.Email || ""),
