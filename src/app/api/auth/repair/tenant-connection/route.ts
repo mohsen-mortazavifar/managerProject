@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getSqlPool, sql } from "@/lib/db";
 import { getBearerToken, verifyAccessToken } from "@/lib/auth/jwt";
-import { decryptTenantConnectionString } from "@/lib/tenant-connection-crypto";
+import { decryptTenantConnectionPayload } from "@/lib/tenant-connection-crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       return respond({ error: "Tenant database connection is not configured for the current encryption format." }, 503);
     }
 
-    const connectionConfig = JSON.parse(decryptTenantConnectionString(encrypted)) as {
+    const connectionConfig = JSON.parse(decryptTenantConnectionPayload(encrypted)) as {
       server?: unknown; port?: unknown; database?: unknown; user?: unknown; password?: unknown;
       options?: { encrypt?: unknown; trustServerCertificate?: unknown };
     };
