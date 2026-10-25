@@ -1,5 +1,6 @@
 import sql from "mssql";
 import { createHash, randomUUID } from "node:crypto";
+import { encryptTenantConnectionPayload } from "./tenant-connection-crypto.mjs";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,15 +17,15 @@ function positiveInt(value, fallback) {
   return Number.isInteger(n) && n > 0 ? n : fallback;
 }
 
-function config(database) {
-  const { DB_SERVER, DB_PORT, DB_USER, DB_PASSWORD, DB_ENCRYPT, DB_TRUST_SERVER_CERTIFICATE } = process.env;
-  if (!DB_SERVER || !DB_USER || !DB_PASSWORD) {
-    throw new Error("DB_SERVER, DB_USER and DB_PASSWORD must be configured.");
+function config(database, server = process.env.DB_SERVER, user = process.env.DB_USER, password = process.env.DB_PASSWORD, portValue = process.env.DB_PORT) {
+  const { DB_ENCRYPT, DB_TRUST_SERVER_CERTIFICATE } = process.env;
+  if (!server || !user || !password) {
+    throw new Error("SQL Server host, user and password must be configured.");
   }
-  const port = DB_PORT ? Number(DB_PORT) : 1433;
+  const port = portValue ? Number(portValue) : 1433;
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("DB_PORT is invalid.");
   return {
-    server: DB_SERVER, port, user: DB_USER, password: DB_PASSWORD, database,
+    server, port, user, password, database,
     connectionTimeout: 10000, requestTimeout: 120000,
     pool: { min: 0, max: 3, idleTimeoutMillis: 30000 },
     options: {
@@ -48,8 +49,8 @@ function quoteDatabaseName(name) {
   return `[${name.replace(/]/g, "]]")}]`;
 }
 
-async function connect(database) {
-  return new sql.ConnectionPool(config(database)).connect();
+async function connect(database, server = process.env.DB_SERVER, user = process.env.DB_USER, password = process.env.DB_PASSWORD, portValue = process.env.DB_PORT) {
+  return new sql.ConnectionPool(config(database, server, user, password, portValue)).connect();
 }
 
 async function writeLog(pool, job, status, step, message, details = null) {
@@ -107,22 +108,50 @@ async function claimJob(pool) {
   }
 }
 
-async function getDatabaseName(pool, job) {
+async function getDatabaseInfo(pool, job) {
   const result = await pool.request()
     .input("tenantId", sql.BigInt, job.TenantId)
     .input("tenantDatabaseId", sql.BigInt, job.TenantDatabaseId)
     .query(`
-      SELECT TOP (1) DatabaseName
+      SELECT TOP (1) DatabaseName, ServerName
       FROM dbo.TenantDatabases
       WHERE TenantDatabaseId = @tenantDatabaseId AND TenantId = @tenantId;
     `);
-  const name = result.recordset[0]?.DatabaseName;
-  quoteDatabaseName(name);
-  return name;
+  const row = result.recordset[0];
+  quoteDatabaseName(row?.DatabaseName);
+  const serverName = String(row?.ServerName ?? "").trim();
+  if (!serverName) throw new Error("TENANT_DATABASE_SERVER_NOT_CONFIGURED");
+  const configuredServer = String(process.env.DB_SERVER ?? "").trim().toLowerCase();
+  const allowedServers = (process.env.TENANT_DB_ALLOWED_SERVERS || "")
+    .split(";").map((item) => item.trim().toLowerCase()).filter(Boolean);
+  if (allowedServers.length ? !allowedServers.includes(serverName.toLowerCase()) : serverName.toLowerCase() !== configuredServer) {
+    throw new Error("TENANT_DATABASE_SERVER_NOT_ALLOWLISTED");
+  }
+  return { databaseName: row.DatabaseName, serverName };
 }
 
-async function ensureDatabase(name) {
-  const master = await connect("master");
+function buildTenantConnectionPayload(databaseName, serverName) {
+  const user = process.env.TENANT_DB_USER;
+  const password = process.env.TENANT_DB_PASSWORD;
+  const portValue = process.env.TENANT_DB_PORT || process.env.DB_PORT || "1433";
+  const port = Number(portValue);
+  if (!user || !password) throw new Error("TENANT_DB_USER and TENANT_DB_PASSWORD must be configured for tenant application access.");
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("TENANT_DB_PORT is invalid.");
+  return JSON.stringify({
+    server: serverName,
+    port,
+    database: databaseName,
+    user,
+    password,
+    options: {
+      encrypt: process.env.DB_ENCRYPT !== "false",
+      trustServerCertificate: process.env.DB_TRUST_SERVER_CERTIFICATE === "true",
+    },
+  });
+}
+
+async function ensureDatabase(name, serverName) {
+  const master = await connect("master", serverName, process.env.DB_USER, process.env.DB_PASSWORD, process.env.TENANT_DB_PORT || process.env.DB_PORT);
   try {
     const exists = await master.request()
       .input("databaseName", sql.NVarChar(128), name)
@@ -135,8 +164,8 @@ async function ensureDatabase(name) {
   }
 }
 
-async function applyInitialMigration(name, script, checksum) {
-  const tenantPool = await connect(name);
+async function applyInitialMigration(name, serverName, script, checksum) {
+  const tenantPool = await connect(name, serverName, process.env.DB_USER, process.env.DB_PASSWORD, process.env.TENANT_DB_PORT || process.env.DB_PORT);
   try {
     const existing = await tenantPool.request().query(`
       IF OBJECT_ID(N'dbo.__SchemaVersions', N'U') IS NOT NULL
@@ -173,12 +202,13 @@ async function applyInitialMigration(name, script, checksum) {
 async function processJob(pool, job, migration, checksum) {
   try {
     await writeLog(pool, job, "CreatingDatabase", "CreatingDatabase", "Creating tenant database.");
-    const databaseName = await getDatabaseName(pool, job);
-    await ensureDatabase(databaseName);
+    const { databaseName, serverName } = await getDatabaseInfo(pool, job);
+    await ensureDatabase(databaseName, serverName);
 
     await writeLog(pool, job, "Migrating", "Migrating", "Applying tenant database schema.");
-    await applyInitialMigration(databaseName, migration, checksum);
+    await applyInitialMigration(databaseName, serverName, migration, checksum);
 
+    const encryptedConnectionPayload = encryptTenantConnectionPayload(buildTenantConnectionPayload(databaseName, serverName));
     const tx = new sql.Transaction(pool);
     await tx.begin();
     try {
@@ -187,9 +217,10 @@ async function processJob(pool, job, migration, checksum) {
         .input("tenantDatabaseId", sql.BigInt, job.TenantDatabaseId)
         .input("jobId", sql.UniqueIdentifier, job.JobId)
         .input("schemaVersion", sql.NVarChar(50), "V1_InitialSchema")
+        .input("connectionStringEncrypted", sql.NVarChar(sql.MAX), encryptedConnectionPayload)
         .query(`
           UPDATE dbo.TenantDatabases
-          SET IsActive = 1, SchemaVersion = @schemaVersion, UpdatedAt = SYSUTCDATETIME()
+          SET IsActive = 1, SchemaVersion = @schemaVersion, ConnectionStringEncrypted = @connectionStringEncrypted, UpdatedAt = SYSUTCDATETIME()
           WHERE TenantDatabaseId = @tenantDatabaseId AND TenantId = @tenantId;
           IF @@ROWCOUNT <> 1 THROW 51001, 'Tenant database metadata update failed.', 1;
 

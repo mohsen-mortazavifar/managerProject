@@ -109,10 +109,10 @@ async function main() {
       .input("passwordHash", sql.NVarChar(500), passwordHash)
       .query(`
         INSERT INTO dbo.Users
-          (Email, PasswordHash, FullName, IsActive, IsSystemAdmin, LastLoginAt, CreatedAt, UpdatedAt, DeletedAt)
+          (Email, PasswordHash, FullName, IsActive, IsSystemAdmin, IsPlatformUser, LastLoginAt, CreatedAt, UpdatedAt, DeletedAt)
         OUTPUT INSERTED.UserId, INSERTED.Email, INSERTED.FullName
         VALUES
-          (@email, @passwordHash, @fullName, 1, 1, NULL, SYSUTCDATETIME(), SYSUTCDATETIME(), NULL);
+          (@email, @passwordHash, @fullName, 1, 1, 1, NULL, SYSUTCDATETIME(), SYSUTCDATETIME(), NULL);
       `);
 
     const user = inserted.recordset[0];
