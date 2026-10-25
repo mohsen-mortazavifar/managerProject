@@ -1,5 +1,5 @@
 import sql from "mssql";
-import { createCipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -158,6 +158,17 @@ function encryptCredential(value) {
   return ["v1", iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), encrypted.toString("base64url")].join(".");
 }
 
+function decryptCredential(value) {
+  const parts = String(value || "").split(".");
+  if (parts.length !== 4 || parts[0] !== "v1") throw new Error("INVALID_STORED_TENANT_CREDENTIAL");
+  const decipher = createDecipheriv("aes-256-gcm", credentialEncryptionKey(), Buffer.from(parts[1], "base64url"));
+  decipher.setAuthTag(Buffer.from(parts[2], "base64url"));
+  return Buffer.concat([
+    decipher.update(Buffer.from(parts[3], "base64url")),
+    decipher.final(),
+  ]).toString("utf8");
+}
+
 function quoteSqlIdentifier(value) {
   if (typeof value !== "string" || !/^[A-Za-z0-9_]{1,128}$/.test(value)) {
     throw new Error("INVALID_SQL_LOGIN_NAME");
@@ -174,19 +185,33 @@ async function provisionTenantSqlCredentials(masterPool, databaseName, job, serv
   // application password is encrypted at rest in Repair_Master metadata.
   const suffix = databaseName.slice("Tenant_T_".length);
   const loginName = `tenant_${suffix.toLowerCase()}`;
-  const passwordChars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%_-";
-  const passwordValues = [
-    "ABCDEFGHJKLMNPQRSTUVWXYZ"[randomBytes(1)[0] % 24],
-    "abcdefghijkmnopqrstuvwxyz"[randomBytes(1)[0] % 24],
-    "23456789"[randomBytes(1)[0] % 8],
-    "!@$%_-"[randomBytes(1)[0] % 6],
-    ...Array.from({ length: 44 }, () => passwordChars[randomBytes(1)[0] % passwordChars.length]),
-  ];
-  for (let i = passwordValues.length - 1; i > 0; i--) {
-    const j = randomBytes(4).readUInt32BE(0) % (i + 1);
-    [passwordValues[i], passwordValues[j]] = [passwordValues[j], passwordValues[i]];
+  const existingCredentials = await masterPool.request()
+    .input("tenantId", sql.BigInt, job.TenantId)
+    .input("tenantDatabaseId", sql.BigInt, job.TenantDatabaseId)
+    .query(`
+      SELECT SqlLoginName, SqlPasswordEncrypted
+      FROM dbo.TenantDatabases
+      WHERE TenantDatabaseId = @tenantDatabaseId AND TenantId = @tenantId;
+    `);
+  const existing = existingCredentials.recordset[0];
+  let password;
+  if (existing?.SqlLoginName === loginName && typeof existing.SqlPasswordEncrypted === "string" && existing.SqlPasswordEncrypted) {
+    password = decryptCredential(existing.SqlPasswordEncrypted);
+  } else {
+    const passwordChars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%_-";
+    const passwordValues = [
+      "ABCDEFGHJKLMNPQRSTUVWXYZ"[randomBytes(1)[0] % 24],
+      "abcdefghijkmnopqrstuvwxyz"[randomBytes(1)[0] % 24],
+      "23456789"[randomBytes(1)[0] % 8],
+      "!@$%_-".split("")[randomBytes(1)[0] % 6],
+      ...Array.from({ length: 44 }, () => passwordChars[randomBytes(1)[0] % passwordChars.length]),
+    ];
+    for (let i = passwordValues.length - 1; i > 0; i--) {
+      const j = randomBytes(4).readUInt32BE(0) % (i + 1);
+      [passwordValues[i], passwordValues[j]] = [passwordValues[j], passwordValues[i]];
+    }
+    password = passwordValues.join("");
   }
-  const password = passwordValues.join("");
   const login = quoteSqlIdentifier(loginName);
 
   const master = await connect("master", serverName);
