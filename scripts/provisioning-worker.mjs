@@ -177,7 +177,14 @@ async function provisionTenantSqlCredentials(masterPool, databaseName, job) {
   // application password is encrypted at rest in Repair_Master metadata.
   const suffix = databaseName.slice("Tenant_T_".length);
   const loginName = `tenant_${suffix.toLowerCase()}`;
-  const password = randomBytes(36).toString("base64url");
+  const passwordChars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%_-";
+  const password = [
+    "ABCDEFGHJKLMNPQRSTUVWXYZ"[randomBytes(1)[0] % 24],
+    "abcdefghijkmnopqrstuvwxyz"[randomBytes(1)[0] % 24],
+    "23456789"[randomBytes(1)[0] % 8],
+    "!@$%_-"[randomBytes(1)[0] % 6],
+    ...Array.from({ length: 44 }, () => passwordChars[randomBytes(1)[0] % passwordChars.length]),
+  ].sort(() => randomBytes(1)[0] - 127).join("");
   const login = quoteSqlIdentifier(loginName);
   const db = quoteDatabaseName(databaseName);
 
@@ -274,11 +281,11 @@ async function processJob(pool, job, migration, checksum) {
     await writeLog(pool, job, "CreatingDatabase", "CreatingDatabase", "Creating tenant database.");
     const databaseName = await getDatabaseName(pool, job);
     await ensureDatabase(databaseName);
-    await writeLog(pool, job, "CreatingCredentials", "CreatingCredentials", "Creating dedicated SQL credentials for tenant database.");
-    await provisionTenantSqlCredentials(pool, databaseName, job);
-
     await writeLog(pool, job, "Migrating", "Migrating", "Applying tenant database schema.");
     await applyInitialMigration(databaseName, migration, checksum);
+
+    await writeLog(pool, job, "CreatingCredentials", "CreatingCredentials", "Creating dedicated SQL credentials for tenant database.");
+    await provisionTenantSqlCredentials(pool, databaseName, job);
 
     const tx = new sql.Transaction(pool);
     await tx.begin();
