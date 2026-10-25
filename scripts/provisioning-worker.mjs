@@ -136,7 +136,7 @@ async function ensureDatabase(name) {
 }
 
 function credentialEncryptionKey() {
-  const value = process.env.TENANT_DB_CREDENTIALS_ENCRYPTION_KEY || "";
+  const value = process.env.TENANT_CONNECTION_ENCRYPTION_KEY || "";
   if (!/^[a-fA-F0-9]{64}$/.test(value)) {
     throw new Error("TENANT_DB_CREDENTIALS_ENCRYPTION_KEY must be a 32-byte hex key.");
   }
@@ -147,7 +147,7 @@ function encryptCredential(value) {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", credentialEncryptionKey(), iv);
   const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
-  return `v1:${iv.toString("hex")}:${cipher.getAuthTag().toString("hex")}:${encrypted.toString("hex")}`;
+  return ["v1", iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), encrypted.toString("base64url")].join(".");
 }
 
 function decryptCredential(value) {
