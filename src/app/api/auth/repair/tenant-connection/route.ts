@@ -44,7 +44,7 @@ export async function POST(request: Request) {
       .input("tenantId", sql.BigInt, input.tenantId)
       .input("tenantDatabaseId", sql.BigInt, input.tenantDatabaseId)
       .query(`
-        SELECT TOP (1) td.ConnectionStringEncrypted
+        SELECT TOP (1) td.ConnectionStringEncrypted, td.ServerName, td.DatabaseName
         FROM dbo.TenantUsers tu
         INNER JOIN dbo.Tenants t ON t.TenantId = tu.TenantId
         INNER JOIN dbo.TenantDatabases td ON td.TenantId = t.TenantId
@@ -62,11 +62,24 @@ export async function POST(request: Request) {
       return respond({ error: "Tenant database connection is not configured for the current encryption format." }, 503);
     }
 
-    const connectionString = decryptTenantConnectionString(encrypted);
-    if (!/^Server=/i.test(connectionString) && !/^Data Source=/i.test(connectionString)) {
-      return respond({ error: "Stored tenant connection string is invalid." }, 503);
+    const connectionConfig = JSON.parse(decryptTenantConnectionString(encrypted)) as {
+      server?: unknown; port?: unknown; database?: unknown; user?: unknown; password?: unknown;
+      options?: { encrypt?: unknown; trustServerCertificate?: unknown };
+    };
+    const row = result.recordset[0];
+    if (typeof connectionConfig.server !== "string" ||
+        connectionConfig.server.toLowerCase() !== String(row.ServerName ?? "").trim().toLowerCase() ||
+        typeof connectionConfig.database !== "string" ||
+        connectionConfig.database !== String(row.DatabaseName ?? "") ||
+        typeof connectionConfig.user !== "string" || !connectionConfig.user ||
+        typeof connectionConfig.password !== "string" || !connectionConfig.password ||
+        typeof connectionConfig.port !== "number" || !Number.isInteger(connectionConfig.port) ||
+        connectionConfig.port < 1 || connectionConfig.port > 65535 ||
+        typeof connectionConfig.options?.encrypt !== "boolean" ||
+        typeof connectionConfig.options?.trustServerCertificate !== "boolean") {
+      return respond({ error: "Stored tenant connection configuration is invalid." }, 503);
     }
-    return respond({ connectionString });
+    return respond({ connectionConfig });
   } catch (error) {
     console.error("Tenant connection resolution failed", error instanceof Error ? error.message : "Unknown error");
     return respond({ error: "Tenant database connection could not be resolved." }, 503);
