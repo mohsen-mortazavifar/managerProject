@@ -1,6 +1,6 @@
 import sql from "mssql";
 import { createHash, randomUUID } from "node:crypto";
-import { encryptTenantConnectionString } from "./tenant-connection-crypto.mjs";
+import { encryptTenantConnectionPayload } from "./tenant-connection-crypto.mjs";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -208,7 +208,7 @@ async function processJob(pool, job, migration, checksum) {
     await writeLog(pool, job, "Migrating", "Migrating", "Applying tenant database schema.");
     await applyInitialMigration(databaseName, serverName, migration, checksum);
 
-    const encryptedConnectionString = encryptTenantConnectionString(buildTenantConnectionPayload(databaseName, serverName));
+    const encryptedConnectionString = encryptTenantConnectionPayload(buildTenantConnectionPayload(databaseName, serverName));
     const tx = new sql.Transaction(pool);
     await tx.begin();
     try {
