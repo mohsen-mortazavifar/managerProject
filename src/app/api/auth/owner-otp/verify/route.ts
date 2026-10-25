@@ -28,7 +28,9 @@ export async function POST(request: Request) {
   try {
     const pool = await getSqlPool();
     const tx = new sql.Transaction(pool);
+   
     await tx.begin();
+     console.log(",,,,,,,,")
     try {
       const found = await new sql.Request(tx)
         .input("challengeId", sql.UniqueIdentifier, input.challengeId)
@@ -92,10 +94,12 @@ export async function POST(request: Request) {
           .input("code", sql.NVarChar(50), tenantCode)
           .input("mobile", sql.NVarChar(40), mobile)
           .query(`
+            DECLARE @InsertedTenants TABLE (TenantId BIGINT);
             INSERT INTO dbo.Tenants
               (Name, Code, Status, ContactEmail, ContactMobile, CreatedAt, UpdatedAt)
-            OUTPUT INSERTED.TenantId
+            OUTPUT INSERTED.TenantId INTO @InsertedTenants (TenantId)
             VALUES (@name, @code, N'Pending', NULL, @mobile, SYSUTCDATETIME(), SYSUTCDATETIME());
+            SELECT TenantId FROM @InsertedTenants;
           `);
         const tenantId = tenantResult.recordset[0]?.TenantId;
         if (!tenantId) throw new Error("TENANT_INSERT_FAILED");
@@ -200,6 +204,7 @@ export async function POST(request: Request) {
       throw error;
     }
   } catch {
+
     return respond({ error: "تأیید کد فعلاً در دسترس نیست." }, 503);
   }
 }

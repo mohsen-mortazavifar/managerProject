@@ -15,6 +15,7 @@ function digest(value: string): Buffer {
 }
 
 export async function POST(request: Request) {
+
   let body: unknown;
   try { body = await request.json(); } catch { return response({ error: "درخواست نامعتبر است." }, 400); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return response({ error: "درخواست نامعتبر است." }, 400);
@@ -22,8 +23,8 @@ export async function POST(request: Request) {
   const input = body as { mobile?: unknown; purpose?: unknown; fullName?: unknown; businessName?: unknown };
   if (typeof input.mobile !== "string") return response({ error: "شماره موبایل معتبر نیست." }, 400);
 
-  let mobile: string;
-  try { mobile = normalizeMobile(input.mobile); } catch { return response({ error: "شماره موبایل را با دقت وارد کنید؛ مانند 09121234567." }, 400); }
+  let mobile1: string;
+  try { mobile1 = normalizeMobile(input.mobile); } catch { return response({ error: "شماره موبایل را با دقت وارد کنید؛ مانند 09121234567." }, 400); }
 
   const purpose = input.purpose === "login" ? "login" : input.purpose === "register" ? "register" : null;
   if (!purpose) return response({ error: "هدف درخواست نامعتبر است." }, 400);
@@ -40,9 +41,11 @@ export async function POST(request: Request) {
     const ipHash = clientIp ? digest(clientIp) : null;
 
 
+
     if (purpose === "login") {
+console.log(mobile1)
   const existingUser = await pool.request()
-    .input("mobile", sql.NVarChar(40), mobile)
+    .input("mobile", sql.NVarChar(40), mobile1)
     .query(`
       SELECT TOP (1) u.UserId, u.IsPlatformUser, u.IsSystemAdmin,
         CASE WHEN EXISTS (
@@ -54,6 +57,7 @@ export async function POST(request: Request) {
     `);
 
   const existing = existingUser.recordset[0];
+
   if (!existing) {
     return response(
       { error: "این شماره موبایل در سیستم ثبت نشده است. ابتدا ثبت‌نام کنید." },
@@ -69,7 +73,7 @@ export async function POST(request: Request) {
 
 
       const existingUser = await pool.request()
-        .input("mobile", sql.NVarChar(40), mobile)
+        .input("mobile", sql.NVarChar(40), mobile1)
         .query(`
       SELECT TOP (1) UserId
       FROM dbo.Users
@@ -86,7 +90,7 @@ export async function POST(request: Request) {
     }
     // Keep request responses uniform for existing and non-existing accounts.
 
-    const limits = await pool.request().input("mobile", sql.NVarChar(40), mobile).input("ipHash", sql.VarBinary(32), ipHash).query(`
+    const limits = await pool.request().input("mobile", sql.NVarChar(40), mobile1).input("ipHash", sql.VarBinary(32), ipHash).query(`
       SELECT
         (SELECT COUNT_BIG(*) FROM dbo.OwnerOtpChallenges
          WHERE Mobile = @mobile AND CreatedAt >= DATEADD(hour, -1, SYSUTCDATETIME())) AS MobileCount,
@@ -97,6 +101,7 @@ export async function POST(request: Request) {
          WHERE Mobile = @mobile ORDER BY CreatedAt DESC) AS LastCreatedAt;
     `);
     const row = limits.recordset[0];
+
     if (Number(row?.MobileCount ?? 0) >= 5 || Number(row?.IpCount ?? 0) >= 20 ||
       (row?.LastCreatedAt && new Date(row.LastCreatedAt).getTime() > Date.now() - OTP_RESEND_COOLDOWN_SECONDS * 1000)) {
       return response({ message: "ورود با  کد نامعتبر. لطفا چند دقیقه دیگر تلاش نمائید" });
@@ -106,7 +111,7 @@ export async function POST(request: Request) {
     const otp = generateOtp();
     await pool.request()
       .input("challengeId", sql.UniqueIdentifier, challengeId)
-      .input("mobile", sql.NVarChar(40), mobile)
+      .input("mobile", sql.NVarChar(40), mobile1)
       .input("purpose", sql.VarChar(16), purpose)
       .input("fullName", sql.NVarChar(200), purpose === "register" ? fullName : null)
       .input("businessName", sql.NVarChar(200), purpose === "register" ? businessName : null)
@@ -121,7 +126,7 @@ export async function POST(request: Request) {
       `);
 
     try {
-      await sendOtpSms(mobile, otp);
+      await sendOtpSms(mobile1, otp);
     } catch {
       await pool.request().input("challengeId", sql.UniqueIdentifier, challengeId)
         .query("UPDATE dbo.OwnerOtpChallenges SET ConsumedAt = SYSUTCDATETIME() WHERE ChallengeId = @challengeId;");
@@ -129,7 +134,8 @@ export async function POST(request: Request) {
     }
 
     return response({ message: "اگر شماره واجد شرایط باشد، کد ارسال خواهد شد.", challengeId });
-  } catch {
+  } catch{
+
     return response({ error: "درخواست کد فعلاً در دسترس نیست." }, 503);
   }
 }

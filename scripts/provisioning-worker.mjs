@@ -118,7 +118,7 @@ async function getDatabaseInfo(pool, job) {
     `);
   const row = result.recordset[0];
   quoteDatabaseName(row?.DatabaseName);
-  const serverName = String(row?.ServerName ?? "").trim();
+  const serverName = String(row?.ServerName ?? "127.0.0.1").trim();
   if (!serverName) throw new Error("TENANT_DATABASE_SERVER_NOT_CONFIGURED");
   const configuredServer = String(process.env.DB_SERVER ?? "").trim().toLowerCase();
   const allowedServers = (process.env.TENANT_DB_ALLOWED_SERVERS || "")
@@ -376,7 +376,7 @@ async function processJob(pool, job, migration, checksum) {
     if (failed) {
       await pool.request()
         .input("tenantId", sql.BigInt, job.TenantId)
-        .query("UPDATE dbo.Tenants SET Status = N'Failed', UpdatedAt = SYSUTCDATETIME() WHERE TenantId = @tenantId AND Status = N'Pending';");
+        .query("UPDATE dbo.Tenants SET Status = N'Pending', UpdatedAt = SYSUTCDATETIME() WHERE TenantId = @tenantId AND Status = N'Pending';");
     }
     console.error(`[${job.JobId}] ${failed ? "failed" : "retrying"}: ${message}`);
   }

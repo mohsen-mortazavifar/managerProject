@@ -18,7 +18,7 @@ export async function POST(request: Request) {
 
   const input = body as { mobile?: unknown; password?: unknown };
   if (typeof input.mobile !== "string" || typeof input.password !== "string" ||
-      input.password.length < 1 || input.password.length > 1024) {
+    input.password.length < 1 || input.password.length > 1024) {
     return respond({ error: "شماره موبایل یا رمز عبور معتبر نیست." }, 400);
   }
 
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     const validPassword = row ? await verifyPassword(input.password, String(row.PasswordHash || "")) : false;
 
     if (!row || !validPassword || !Boolean(row.IsActive) || !row.MobileVerifiedAt ||
-        Boolean(row.IsPlatformUser) || Boolean(row.IsSystemAdmin)) {
+      Boolean(row.IsPlatformUser) || Boolean(row.IsSystemAdmin)) {
       await recordLoginAttempt(mobile, null, false, request);
       return respond({ error: "شماره موبایل یا رمز عبور صحیح نیست." }, 401);
     }
@@ -75,7 +75,15 @@ export async function POST(request: Request) {
       .query("UPDATE dbo.Users SET LastLoginAt = SYSUTCDATETIME() WHERE UserId = @userId;");
     await recordLoginAttempt(mobile, null, true, request);
     return respond({ tokenType: "Bearer", accessToken, expiresIn: JWT_TTL_SECONDS, user });
-  } catch {
-    return respond({ error: "ورود موقتاً در دسترس نیست." }, 503);
+  } catch (error) {
+    console.error("[auth/login] error:", error);
+
+    return NextResponse.json(
+      {
+        error:
+          "ورود موقتاً در دسترس نیست. تنظیمات سرور و اجرای اسکریپت محدودسازی ورود را بررسی کنید.",
+      },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
   }
 }
