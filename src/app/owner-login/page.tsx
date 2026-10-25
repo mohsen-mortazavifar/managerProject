@@ -12,7 +12,7 @@ type PasswordLoginResult = { accessToken?: string; error?: string; user?: { isPl
 export default function OwnerLoginPage() {
   const router = useRouter();
   const [mobile, setMobile] = useState("");
-  const [mode, setMode] = useState<"otp" | "password">("otp");
+  const [mode, setMode] = useState<"otp" | "password" | "ownerPassword">("otp");
   const [password, setPassword] = useState("");
   const [challengeId, setChallengeId] = useState("");
   const [code, setCode] = useState("");
@@ -50,6 +50,21 @@ export default function OwnerLoginPage() {
     finally { setBusy(false); }
   }
 
+  async function loginWithOwnerPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    try {
+      const response = await fetch("/api/auth/owner-password/login", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mobile, password }),
+      });
+      const result = await response.json() as PasswordLoginResult;
+      if (!response.ok || !result.accessToken) { setError(result.error || "ورود با رمز پشتیبان انجام نشد."); return; }
+      sessionStorage.setItem("repairMasterAccessToken", result.accessToken);
+      router.replace("/workspace");
+    } catch { setError("ارتباط با سرور برقرار نشد."); }
+    finally { setBusy(false); }
+  }
+
   async function verifyCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
     try {
@@ -73,7 +88,17 @@ export default function OwnerLoginPage() {
         <div className="auth-icon"><Phone size={23} /></div>
         <h1>ورود مالک با موبایل</h1>
         <p className="auth-description">شماره موبایل تأییدشده را وارد کنید تا کد یک‌بارمصرف دریافت کنید.</p>
-        {mode === "password" ? (
+        {mode === "ownerPassword" ? (
+          <form className="auth-form" onSubmit={loginWithOwnerPassword}>
+            <label htmlFor="owner-mobile-password"><Phone size={15} /> شماره موبایل مالک</label>
+            <input id="owner-mobile-password" type="tel" autoComplete="tel" required maxLength={20} value={mobile} onChange={e => setMobile(e.target.value)} placeholder="09121234567" dir="ltr" />
+            <label htmlFor="owner-backup-password"><KeyRound size={15} /> رمز پشتیبان مالک</label>
+            <input id="owner-backup-password" type="password" autoComplete="current-password" required maxLength={1024} value={password} onChange={e => setPassword(e.target.value)} />
+            {error && <p className="auth-error" role="alert">{error}</p>}
+            <button className="auth-submit" disabled={busy || !mobile.trim() || !password} type="submit">{busy ? "در حال ورود..." : "ورود مالک با رمز پشتیبان"}</button>
+            <button className="auth-secondary" type="button" onClick={() => { setMode("otp"); setPassword(""); setError(""); setNotice(""); }}>بازگشت به ورود پیامکی</button>
+          </form>
+        ) : mode === "password" ? (
           <form className="auth-form" onSubmit={loginWithPassword}>
             <label htmlFor="mobile-password"><Phone size={15} /> شماره موبایل</label>
             <input id="mobile-password" type="tel" autoComplete="tel" required maxLength={20} value={mobile} onChange={e => setMobile(e.target.value)} placeholder="09121234567" dir="ltr" />
@@ -102,6 +127,7 @@ export default function OwnerLoginPage() {
           </form>
         )}
         {mode === "otp" && <button className="auth-secondary" type="button" onClick={() => { setMode("password"); setChallengeId(""); setCode(""); setError(""); setNotice(""); }}>همکار هستید؟ ورود با موبایل و رمز عبور</button>}
+        {mode === "otp" && <button className="auth-secondary" type="button" onClick={() => { setMode("ownerPassword"); setChallengeId(""); setCode(""); setError(""); setNotice(""); }}>مالک هستید؟ ورود با رمز پشتیبان</button>}
         <div className="auth-security"><ShieldCheck size={16} /><span>{mode === "otp" ? "کد یک‌بارمصرف حداکثر ۵ دقیقه اعتبار دارد." : "ورود با رمز فقط برای همکارانی است که مالک برایشان رمز اولیه تعیین کرده است."}</span></div>
         <p className="auth-footnote">مدیر سیستم همچنان از <a href="/login">صفحه ورود مدیر</a> استفاده می‌کند.</p>
         <p className="auth-footnote">حساب ندارید؟ <a href="/register">ثبت‌نام مالک</a></p>
