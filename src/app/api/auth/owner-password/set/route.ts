@@ -36,6 +36,16 @@ export async function POST(request: Request) {
     if (!row || !row.MobileVerifiedAt || Boolean(row.IsPlatformUser) || Boolean(row.IsSystemAdmin)) {
       return NextResponse.json({ error: "برای تعیین رمز عبور ابتدا باید حساب کسب‌وکار با پیامک تأیید شود." }, { status: 403 });
     }
+    const ownerMembership = await pool.request().input("userId", sql.BigInt, auth.user.userId).query(`
+      SELECT TOP (1) 1 AS IsOwner
+      FROM dbo.TenantUsers tu
+      INNER JOIN dbo.Tenants t ON t.TenantId = tu.TenantId
+      WHERE tu.UserId = @userId AND tu.IsOwner = 1 AND tu.IsActive = 1
+        AND t.DeletedAt IS NULL AND t.Status = N'Active';
+    `);
+    if (!ownerMembership.recordset.length) {
+      return NextResponse.json({ error: "تنظیم رمز پشتیبان فقط برای مالک فعال کسب‌وکار مجاز است." }, { status: 403 });
+    }
 
     const passwordHash = await hashPassword(password);
     await pool.request().input("userId", sql.BigInt, auth.user.userId)
