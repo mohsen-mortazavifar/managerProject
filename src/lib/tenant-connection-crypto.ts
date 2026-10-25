@@ -13,8 +13,8 @@ function getKey(): Buffer {
 }
 
 /** Format: v1.<base64url IV>.<base64url auth tag>.<base64url ciphertext>. */
-export function encryptTenantConnectionString(plaintext: string): string {
-  if (!plaintext.trim()) throw new Error("Cannot encrypt an empty tenant connection string.");
+export function encryptTenantConnectionPayload(plaintext: string): string {
+  if (!plaintext.trim()) throw new Error("Cannot encrypt an empty tenant connection payload.");
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv("aes-256-gcm", getKey(), iv);
   const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
@@ -22,7 +22,7 @@ export function encryptTenantConnectionString(plaintext: string): string {
   return [PREFIX, iv.toString("base64url"), tag.toString("base64url"), ciphertext.toString("base64url")].join(".");
 }
 
-export function decryptTenantConnectionString(encrypted: string): string {
+export function decryptTenantConnectionPayload(encrypted: string): string {
   const parts = encrypted.split(".");
   if (parts.length !== 4 || parts[0] !== PREFIX) {
     throw new Error("Unsupported tenant connection ciphertext format.");
