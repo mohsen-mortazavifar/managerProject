@@ -178,13 +178,18 @@ async function provisionTenantSqlCredentials(masterPool, databaseName, job) {
   const suffix = databaseName.slice("Tenant_T_".length);
   const loginName = `tenant_${suffix.toLowerCase()}`;
   const passwordChars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%_-";
-  const password = [
+  const passwordValues = [
     "ABCDEFGHJKLMNPQRSTUVWXYZ"[randomBytes(1)[0] % 24],
     "abcdefghijkmnopqrstuvwxyz"[randomBytes(1)[0] % 24],
     "23456789"[randomBytes(1)[0] % 8],
     "!@$%_-"[randomBytes(1)[0] % 6],
     ...Array.from({ length: 44 }, () => passwordChars[randomBytes(1)[0] % passwordChars.length]),
-  ].sort(() => randomBytes(1)[0] - 127).join("");
+  ];
+  for (let i = passwordValues.length - 1; i > 0; i--) {
+    const j = randomBytes(4).readUInt32BE(0) % (i + 1);
+    [passwordValues[i], passwordValues[j]] = [passwordValues[j], passwordValues[i]];
+  }
+  const password = passwordValues.join("");
   const login = quoteSqlIdentifier(loginName);
   const db = quoteDatabaseName(databaseName);
 
@@ -209,8 +214,20 @@ async function provisionTenantSqlCredentials(masterPool, databaseName, job) {
         await tenant.request().query(`CREATE USER ${login} FOR LOGIN ${login};`);
       }
       await tenant.request().query(`
-        ALTER ROLE [db_datareader] ADD MEMBER ${login};
-        ALTER ROLE [db_datawriter] ADD MEMBER ${login};
+        IF NOT EXISTS (
+          SELECT 1 FROM sys.database_role_members rm
+          JOIN sys.database_principals rolep ON rolep.principal_id = rm.role_principal_id
+          JOIN sys.database_principals memberp ON memberp.principal_id = rm.member_principal_id
+          WHERE rolep.name = N'db_datareader' AND memberp.name = ${quoteSqlLiteral(loginName)}
+        ) ALTER ROLE [db_datareader] ADD MEMBER ${login};
+
+        IF NOT EXISTS (
+          SELECT 1 FROM sys.database_role_members rm
+          JOIN sys.database_principals rolep ON rolep.principal_id = rm.role_principal_id
+          JOIN sys.database_principals memberp ON memberp.principal_id = rm.member_principal_id
+          WHERE rolep.name = N'db_datawriter' AND memberp.name = ${quoteSqlLiteral(loginName)}
+        ) ALTER ROLE [db_datawriter] ADD MEMBER ${login};
+
         GRANT EXECUTE ON SCHEMA::[core] TO ${login};
         GRANT EXECUTE ON SCHEMA::[crm] TO ${login};
         GRANT EXECUTE ON SCHEMA::[repair] TO ${login};
