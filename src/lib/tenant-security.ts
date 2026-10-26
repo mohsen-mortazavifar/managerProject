@@ -125,6 +125,37 @@ export async function syncTenantSecurityUser(input: TenantUserInput): Promise<vo
   }
 }
 
+export async function setTenantSecurityUserRole(
+  tenantId: string | number | bigint,
+  masterUserId: string | number | bigint,
+  roleId: string | number | bigint,
+): Promise<void> {
+  const pool = await getTenantPool(tenantId);
+  try {
+    await pool.request()
+      .input("masterUserId", sql.BigInt, masterUserId)
+      .input("roleId", sql.BigInt, roleId)
+      .query(`
+        IF NOT EXISTS (SELECT 1 FROM security.Roles WHERE RoleId = @roleId)
+          THROW 51010, 'TENANT_ROLE_NOT_FOUND', 1;
+
+        DECLARE @userId BIGINT;
+        SELECT @userId = UserId
+        FROM security.Users WITH (UPDLOCK, HOLDLOCK)
+        WHERE MasterUserId = @masterUserId;
+
+        IF @userId IS NULL
+          THROW 51011, 'TENANT_USER_NOT_FOUND', 1;
+
+        DELETE FROM security.UserRoles WHERE UserId = @userId;
+        INSERT INTO security.UserRoles (UserId, RoleId, CreatedAt)
+        VALUES (@userId, @roleId, SYSUTCDATETIME());
+      `);
+  } finally {
+    await pool.close();
+  }
+}
+
 export async function getTenantSecurityUserRoleId(
   tenantId: string | number | bigint,
   masterUserId: string | number | bigint,
