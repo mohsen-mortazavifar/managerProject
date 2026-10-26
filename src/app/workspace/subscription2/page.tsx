@@ -41,7 +41,7 @@ export default function SubscriptionPage() {
         } catch { setError("ارتباط با سرور برقرار نشد."); }
         finally { setBusy(""); }
     }
-    const hasActivePlan = orders.some(o => o.status === "Active" && new Date(o.endsAt).getTime() > Date.now());
+    const hasActivePlan = orders.some(o => o.status === "Active" && new Date(o.startsAt).getTime() <= Date.now() && new Date(o.endsAt).getTime() > Date.now());
     async function logout() { try { await fetch("/api/auth/logout", { method: "POST", headers: { Authorization: `Bearer ${token}` } }); } catch { } finally { sessionStorage.removeItem("repairMasterAccessToken"); router.replace("/login"); } }
     return <main className="tenant-page" dir="rtl"><header className="tenant-topbar"><button className="tenant-back" onClick={() => router.push("/workspace")}><ArrowRight size={17} /> داشبورد</button><div className="tenant-brand"><span>RM</span><strong>اشتراک کسب‌وکار</strong></div><button className="tenant-logout" onClick={logout}><LogOut size={16} /> خروج</button></header>
         <section className="tenant-content"><div className="tenant-heading"><div className="tenant-title-icon"><ShoppingCart size={22} /></div><div><h1>پلن‌ها و سفارش‌های من</h1><p>{tenant ? tenant.name : "مدیریت اشتراک کسب‌وکار"}</p></div><button className="tenant-refresh" onClick={() => void load()} disabled={loading}><RefreshCw size={16} /> بروزرسانی</button>{hasActivePlan && <button className="tenant-primary" onClick={() => router.push("/workspace")}>ورود به پنل کسب‌وکار</button>}</div>
