@@ -180,14 +180,13 @@ export async function POST(request: Request) {
       if (challenge.Purpose === "login") {
         const account = await new sql.Request(tx)
           .input("mobile", sql.NVarChar(40), mobile)
-          .input("userName", sql.NVarChar(100), userName)
           .query(`
             SELECT TOP (1) u.UserId, u.Email, u.FullName, u.IsActive, u.IsSystemAdmin, u.IsPlatformUser,
               CASE WHEN EXISTS (
                 SELECT 1 FROM dbo.TenantUsers tu
                 WHERE tu.UserId = u.UserId AND tu.IsOwner = 1 AND tu.IsActive = 1
               ) THEN 1 ELSE 0 END AS IsBusinessOwner
-            FROM dbo.Users u WHERE u.Mobile = @mobile AND LOWER(u.UserName) = @userName AND u.DeletedAt IS NULL;
+            FROM dbo.Users u WHERE u.Mobile = @mobile AND u.DeletedAt IS NULL;
           `);
         const userRow = account.recordset[0];
         if (!userRow || !Boolean(userRow.IsActive) || Boolean(userRow.IsSystemAdmin) ||
