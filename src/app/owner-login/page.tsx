@@ -96,7 +96,7 @@ export default function OwnerLoginPage() {
           <form className="auth-form" onSubmit={verifyCode}>
             <p className="auth-success" role="status">{notice}</p>
             <label htmlFor="code"><KeyRound size={15} /> کد ۶ رقمی</label>
-            <input id="code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={code} onChange={e => setCode(e.target.value.replace(/\\D/g, "").slice(0, 6))} placeholder="۱۲۳۴۵۶" dir="ltr" />
+            <input id="code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={code} onChange={e => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="۱۲۳۴۵۶" dir="ltr" />
             {error && <p className="auth-error" role="alert">{error}</p>}
             <button className="auth-submit" disabled={busy || code.length !== 6} type="submit">{busy ? <LoaderCircle size={17} className="animate-spin" /> : <ShieldCheck size={17} />}{busy ? "در حال بررسی..." : "تأیید و ورود"}</button>
             <button className="auth-secondary" type="button" onClick={() => { setChallengeId(""); setCode(""); setError(""); setNotice(""); }}>تغییر شماره</button>
