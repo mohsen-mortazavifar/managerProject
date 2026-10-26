@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSqlPool, sql } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/guard";
 import { hashPassword } from "@/lib/auth/password";
+import { getTenantSecurityRoles, syncTenantSecurityUser } from "@/lib/tenant-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,6 +75,30 @@ export async function POST(request: Request) {
       `);
     if (Number(update.recordset[0]?.UpdatedCount ?? 0) !== 1) {
       return json({ error: "رمز عبور هم‌زمان تغییر کرده است؛ فهرست اعضا را تازه‌سازی کنید." }, 409);
+    }
+
+    const tenantRoles = await getTenantSecurityRoles(tenant.TenantId);
+    const tenantUserRoles = await pool.request()
+      .input("tenantId", sql.BigInt, tenant.TenantId)
+      .input("masterUserId", sql.BigInt, member.UserId)
+      .query(`
+        SELECT TOP (1) r.RoleId
+        FROM security.Users u
+        INNER JOIN security.UserRoles ur ON ur.UserId = u.UserId
+        INNER JOIN security.Roles r ON r.RoleId = ur.RoleId
+        WHERE u.MasterUserId = @masterUserId;
+      `);
+    const tenantRoleId = tenantUserRoles.recordset[0]?.RoleId;
+    if (tenantRoleId) {
+      await syncTenantSecurityUser({
+        tenantId: tenant.TenantId,
+        masterUserId: member.UserId,
+        userName: String(member.Mobile || member.UserId),
+        displayName: String(member.UserId),
+        passwordHash,
+        roleId: String(tenantRoleId),
+        isActive: true,
+      });
     }
     return json({ message: "رمز عبور ثبت شد. آن را به‌صورت امن در اختیار صاحب حساب قرار دهید." });
   } catch {
