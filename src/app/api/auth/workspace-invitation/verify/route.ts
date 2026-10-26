@@ -117,7 +117,7 @@ export async function POST(request: Request) {
         tenantId: row.TenantId,
         masterUserId: user.UserId,
         userName: mobile,
-        displayName: String(row.FullName || mobile),
+        displayName: String(row.FullName || mobile).slice(0, 150),
         passwordHash: tenantPasswordHash,
         roleId: selectedRole.roleId,
         isActive: true,
