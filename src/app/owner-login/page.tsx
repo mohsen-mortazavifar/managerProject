@@ -2,8 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { ArrowRight, KeyRound, LoaderCircle, Phone, ShieldCheck } from "lucide-react";
+import { KeyRound, LoaderCircle, Phone, ShieldCheck } from "lucide-react";
 
 type RequestResult = { challengeId?: string; message?: string; error?: string };
 type VerifyResult = { accessToken?: string; error?: string; user?: { isPlatformUser?: boolean } };
@@ -68,7 +67,7 @@ export default function OwnerLoginPage() {
   return (
     <main className="auth-page" dir="rtl">
       <section className="auth-card">
-        <Link className="auth-back" href="/login"><ArrowRight size={16} /> ورود مدیر سیستم</Link>
+        
         <div className="auth-brand"><span>RM</span><div><strong>Repair Master</strong><small>ورود به فضای کسب‌وکار</small></div></div>
         <div className="auth-icon"><Phone size={23} /></div>
         <h1>ورود مالک با موبایل</h1>
@@ -104,7 +103,6 @@ export default function OwnerLoginPage() {
           </form>
         )}
         <div className="auth-security"><ShieldCheck size={16} /><span>{mode === "otp" ? "کد یک‌بارمصرف حداکثر ۵ دقیقه اعتبار دارد." : "ورود امن به پنل کسب‌وکار"}</span></div>
-        <p className="auth-footnote">مدیر سیستم همچنان از <a href="/login">صفحه ورود مدیر</a> استفاده می‌کند.</p>
         <p className="auth-footnote">حساب ندارید؟ <a href="/register">ثبت‌نام مالک</a></p>
       </section>
     </main>
