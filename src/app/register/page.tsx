@@ -11,7 +11,6 @@ export default function OwnerRegisterPage() {
   const router = useRouter();
   const [fullName, setFullName] = useState("");
   const [mobile, setMobile] = useState("");
-  const [userName, setUserName] = useState("");
   const [businessAddress, setBusinessAddress] = useState("");
   const [businessPhone, setBusinessPhone] = useState("");
   const [businessName, setBusinessName] = useState("");
@@ -26,7 +25,7 @@ export default function OwnerRegisterPage() {
     try {
       const response = await fetch("/api/auth/owner-otp/request", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ purpose: "register", fullName, mobile, userName, businessName, businessAddress, businessPhone }),
+        body: JSON.stringify({ purpose: "register", fullName, mobile, businessName, businessAddress, businessPhone }),
       });
       const result = await response.json() as OtpRequestResult;
       if (!response.ok || !result.challengeId) {
@@ -44,7 +43,7 @@ export default function OwnerRegisterPage() {
     try {
       const response = await fetch("/api/auth/owner-otp/verify", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ challengeId, mobile, userName, code }),
+        body: JSON.stringify({ challengeId, mobile, code }),
       });
       const result = await response.json() as OtpVerifyResult;
       if (!response.ok || !result.accessToken) { setError(result.error || "کد تأیید نشد."); return; }
@@ -67,9 +66,6 @@ export default function OwnerRegisterPage() {
           <form className="auth-form" onSubmit={requestCode}>
             <label htmlFor="fullName"><UserRound size={15} /> نام کامل</label>
             <input id="fullName" autoComplete="name" required maxLength={200} value={fullName} onChange={e => setFullName(e.target.value)} placeholder="نام و نام خانوادگی" />
-            <label htmlFor="userName">نام کاربری (انگلیسی)</label>
-            <input id="userName" autoComplete="username" required minLength={3} maxLength={100} pattern="[a-zA-Z0-9._-]{3,100}" value={userName} onChange={e => setUserName(e.target.value.toLowerCase())} placeholder="مثلاً mohsen123" dir="ltr" />
-            <small className="auth-footnote">حداقل ۳ کاراکتر؛ فقط حروف انگلیسی، عدد، نقطه، خط تیره یا زیرخط.</small>
             <label htmlFor="mobile"><Phone size={15} /> شماره موبایل با کد کشور</label>
             <input id="mobile" type="tel" autoComplete="tel" required maxLength={20} value={mobile} onChange={e => setMobile(e.target.value)} placeholder="09121234567" dir="ltr" />
             <small className="auth-footnote">شماره را وارد کنید.</small>
