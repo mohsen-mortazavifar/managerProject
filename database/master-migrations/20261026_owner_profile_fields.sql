@@ -12,7 +12,7 @@ IF COL_LENGTH(N'dbo.Users', N'UserName') IS NULL
 GO
 /* Existing accounts can continue using their normalized mobile as username. */
 UPDATE u
-SET UserName = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(u.Mobile, N'+', N''), N' ', N''), N'-', N''), N'(', N''), N')', N'')
+SET UserName = CASE WHEN LEFT(u.Mobile, 3) = N'+98' THEN N'0' + SUBSTRING(u.Mobile, 4, 20) ELSE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(u.Mobile, N'+', N''), N' ', N''), N'-', N''), N'(', N''), N')', N'') END
 FROM dbo.Users u
 WHERE u.UserName IS NULL AND u.Mobile IS NOT NULL;
 GO
