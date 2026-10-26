@@ -20,9 +20,9 @@ export async function POST(request: Request) {
   try { body = await request.json(); } catch { return response({ error: "درخواست نامعتبر است." }, 400); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return response({ error: "درخواست نامعتبر است." }, 400);
 
-  const input = body as { mobile?: unknown; userName?: unknown; purpose?: unknown; fullName?: unknown; businessName?: unknown; businessAddress?: unknown; businessPhone?: unknown };
+  const input = body as { mobile?: unknown; purpose?: unknown; fullName?: unknown; businessName?: unknown; businessAddress?: unknown; businessPhone?: unknown };
   if (typeof input.mobile !== "string") return response({ error: "شماره موبایل معتبر نیست." }, 400);
-  const userName = typeof input.userName === "string" ? input.userName.trim().toLowerCase() : "";
+
 
   let mobile1: string;
   try { mobile1 = normalizeMobile(input.mobile); } catch { return response({ error: "شماره موبایل را با دقت وارد کنید؛ مانند 09121234567." }, 400); }
@@ -34,11 +34,8 @@ export async function POST(request: Request) {
   const businessName = typeof input.businessName === "string" ? input.businessName.trim() : "";
   const businessAddress = typeof input.businessAddress === "string" ? input.businessAddress.trim() : "";
   const businessPhone = typeof input.businessPhone === "string" ? input.businessPhone.trim() : "";
-  if (purpose === "register" && (!fullName || fullName.length > 200 || !businessName || businessName.length > 200 || !userName || !/^[a-z0-9._-]{3,100}$/.test(userName) || !businessAddress || businessAddress.length > 500 || !businessPhone || !/^[+0-9() -]{7,30}$/.test(businessPhone))) {
-    return response({ error: "نام کاربری (۳ تا ۱۰۰ حرف انگلیسی)، نام، نام کسب‌وکار، نشانی و تلفن ثابت را درست وارد کنید." }, 400);
-  }
-  if (purpose === "login" && (!userName || !/^[a-z0-9._-]{3,100}$/.test(userName))) {
-    return response({ error: "نام کاربری معتبر نیست." }, 400);
+  if (purpose === "register" && (!fullName || fullName.length > 200 || !businessName || businessName.length > 200 || !businessAddress || businessAddress.length > 500 || !businessPhone || !/^[+0-9() -]{7,30}$/.test(businessPhone))) {
+    return response({ error: "نام، نام کسب‌وکار، نشانی و تلفن ثابت را درست وارد کنید." }, 400);
   }
 
   try {
@@ -51,12 +48,10 @@ export async function POST(request: Request) {
     if (purpose === "login") {
       const existingUser = await pool.request()
         .input("mobile", sql.NVarChar(40), mobile1)
-        .input("userName", sql.NVarChar(100), userName)
         .query(`
           SELECT TOP (1) u.UserId
           FROM dbo.Users u
           WHERE u.Mobile = @mobile
-            AND LOWER(u.UserName) = @userName
             AND u.DeletedAt IS NULL
             AND u.IsActive = 1
             AND EXISTS (
@@ -67,22 +62,21 @@ export async function POST(request: Request) {
             );
         `);
       if (!existingUser.recordset[0]) {
-        return response({ error: "نام کاربری یا شماره موبایل صحیح نیست؛ برای ثبت‌نام از لینک پایین استفاده کنید." }, 404);
+        return response({ error: "شماره موبایل ثبت‌شده نیست؛ برای ثبت‌نام از لینک پایین استفاده کنید." }, 404);
       }
     }
 
     if (purpose === "register") {
       const existingUser = await pool.request()
         .input("mobile", sql.NVarChar(40), mobile1)
-        .input("userName", sql.NVarChar(100), userName)
         .query(`
           SELECT TOP (1) UserId
           FROM dbo.Users
-          WHERE (Mobile = @mobile OR LOWER(UserName) = @userName)
+          WHERE Mobile = @mobile
             AND DeletedAt IS NULL;
         `);
       if (existingUser.recordset.length > 0) {
-        return response({ error: "این شماره موبایل یا نام کاربری قبلاً ثبت شده است؛ لطفاً وارد شوید یا نام دیگری انتخاب کنید." }, 409);
+        return response({ error: "این شماره موبایل قبلاً ثبت شده است؛ لطفاً وارد شوید." }, 409);
       }
     }
     // Keep request responses uniform for existing and non-existing accounts.
@@ -112,8 +106,7 @@ export async function POST(request: Request) {
       .input("purpose", sql.VarChar(16), purpose)
       .input("fullName", sql.NVarChar(200), purpose === "register" ? fullName : null)
       .input("businessName", sql.NVarChar(200), purpose === "register" ? businessName : null)
-      .input("userName", sql.NVarChar(100), userName || null)
-      .input("businessAddress", sql.NVarChar(500), purpose === "register" ? businessAddress : null)
+            .input("businessAddress", sql.NVarChar(500), purpose === "register" ? businessAddress : null)
       .input("businessPhone", sql.NVarChar(30), purpose === "register" ? businessPhone : null)
       .input("otpHash", sql.VarBinary(32), hashOtp(challengeId, otp))
       .input("expiresAt", sql.DateTime2, new Date(Date.now() + OTP_TTL_SECONDS * 1000))
@@ -121,8 +114,8 @@ export async function POST(request: Request) {
       .input("maxAttempts", sql.Int, OTP_MAX_ATTEMPTS)
       .query(`
         INSERT INTO dbo.OwnerOtpChallenges
-          (ChallengeId, Mobile, Purpose, FullName, BusinessName, UserName, BusinessAddress, BusinessPhone, OtpHash, ExpiresAt, MaxAttempts, ClientIpHash)
-        VALUES (@challengeId, @mobile, @purpose, @fullName, @businessName, @userName, @businessAddress, @businessPhone, @otpHash, @expiresAt, @maxAttempts, @ipHash);
+          (ChallengeId, Mobile, Purpose, FullName, BusinessName, BusinessAddress, BusinessPhone, OtpHash, ExpiresAt, MaxAttempts, ClientIpHash)
+        VALUES (@challengeId, @mobile, @purpose, @fullName, @businessName, @businessAddress, @businessPhone, @otpHash, @expiresAt, @maxAttempts, @ipHash);
       `);
 
     try {
