@@ -87,9 +87,6 @@ export default function OnboardingPage() {
             order.status === "Active" && new Date(order.endsAt).getTime() > Date.now()
           );
           setPlanActive(hasActivePlan);
-          if (hasActivePlan) {
-            router.replace("/workspace");
-          }
         } else {
           setPlanActive(false);
         }
