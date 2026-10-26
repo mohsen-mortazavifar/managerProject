@@ -291,6 +291,11 @@ export async function PATCH(request: Request) {
         const masterRoleId = masterRoleResult.recordset[0]?.RoleId;
         if (!masterRoleId) throw new Error("MASTER_ROLE_NOT_FOUND");
 
+        await new sql.Request(tx).input("tenantUserId", sql.BigInt, input.tenantUserId).input("roleId", sql.BigInt, masterRoleId)
+          .query(`DELETE FROM dbo.UserRoles WHERE TenantUserId = @tenantUserId;
+                  INSERT INTO dbo.UserRoles (TenantUserId, RoleId, AssignedAt)
+                  VALUES (@tenantUserId, @roleId, SYSUTCDATETIME());`);
+
         const identityResult = await new sql.Request(tx)
           .input("tenantUserId", sql.BigInt, input.tenantUserId)
           .query("SELECT UserId FROM dbo.TenantUsers WHERE TenantUserId = @tenantUserId;");
@@ -298,10 +303,6 @@ export async function PATCH(request: Request) {
         if (!memberUserId) throw new Error("MEMBER_NOT_FOUND");
 
         await setTenantSecurityUserRole(tenant.TenantId, memberUserId, selectedRole.roleId);
-        await new sql.Request(tx).input("tenantUserId", sql.BigInt, input.tenantUserId).input("roleId", sql.BigInt, masterRoleId)
-          .query(`DELETE FROM dbo.UserRoles WHERE TenantUserId = @tenantUserId;
-                  INSERT INTO dbo.UserRoles (TenantUserId, RoleId, AssignedAt)
-                  VALUES (@tenantUserId, @roleId, SYSUTCDATETIME());`);
       }
       await tx.commit();
       return json({ message: hasRoleChange ? "نقش عضو با موفقیت تغییر کرد." : input.isActive ? "عضویت فعال شد." : "عضویت غیرفعال شد." });
