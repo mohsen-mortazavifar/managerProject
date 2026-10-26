@@ -103,8 +103,6 @@ export default function OwnerLoginPage() {
           </form>
         ) : mode === "password" ? (
           <form className="auth-form" onSubmit={loginWithPassword}>
-            <label htmlFor="member-userName">نام کاربری</label>
-            <input id="member-userName" autoComplete="username" required maxLength={100} value={userName} onChange={e => setUserName(e.target.value.toLowerCase())} dir="ltr" />
             <label htmlFor="mobile-password"><Phone size={15} /> شماره موبایل</label>
             <input id="mobile-password" type="tel" autoComplete="tel" required maxLength={20} value={mobile} onChange={e => setMobile(e.target.value)} placeholder="09121234567" dir="ltr" />
             <label htmlFor="member-password"><KeyRound size={15} /> رمز عبور</label>
