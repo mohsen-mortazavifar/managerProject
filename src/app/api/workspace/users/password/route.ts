@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSqlPool, sql } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/guard";
 import { hashPassword } from "@/lib/auth/password";
-import { getTenantSecurityRoles, syncTenantSecurityUser } from "@/lib/tenant-security";
+import { getTenantSecurityUserRoleId, syncTenantSecurityUser } from "@/lib/tenant-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,18 +77,7 @@ export async function POST(request: Request) {
       return json({ error: "رمز عبور هم‌زمان تغییر کرده است؛ فهرست اعضا را تازه‌سازی کنید." }, 409);
     }
 
-    const tenantRoles = await getTenantSecurityRoles(tenant.TenantId);
-    const tenantUserRoles = await pool.request()
-      .input("tenantId", sql.BigInt, tenant.TenantId)
-      .input("masterUserId", sql.BigInt, member.UserId)
-      .query(`
-        SELECT TOP (1) r.RoleId
-        FROM security.Users u
-        INNER JOIN security.UserRoles ur ON ur.UserId = u.UserId
-        INNER JOIN security.Roles r ON r.RoleId = ur.RoleId
-        WHERE u.MasterUserId = @masterUserId;
-      `);
-    const tenantRoleId = tenantUserRoles.recordset[0]?.RoleId;
+    const tenantRoleId = await getTenantSecurityUserRoleId(tenant.TenantId, member.UserId);
     if (tenantRoleId) {
       await syncTenantSecurityUser({
         tenantId: tenant.TenantId,
@@ -96,7 +85,7 @@ export async function POST(request: Request) {
         userName: String(member.Mobile || member.UserId),
         displayName: String(member.UserId),
         passwordHash,
-        roleId: String(tenantRoleId),
+        roleId: tenantRoleId,
         isActive: true,
       });
     }
