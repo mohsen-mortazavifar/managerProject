@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSqlPool, sql } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/guard";
 import { normalizeMobile } from "@/lib/auth/otp";
-import { getTenantSecurityRoles, setTenantSecurityUserRole, syncTenantSecurityUser } from "@/lib/tenant-security";
+import { getTenantSecurityRoles, getTenantSecurityUserRoleId, setTenantSecurityUserRole, syncTenantSecurityUser } from "@/lib/tenant-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -75,9 +75,16 @@ export async function GET(request: Request) {
       getTenantSecurityRoles(tenant.TenantId),
     ]);
 
+    const tenantRoleIds = await Promise.all(membersResult.recordset.map(async (row) => ({
+      tenantUserId: String(row.TenantUserId),
+      roleId: await getTenantSecurityUserRoleId(tenant.TenantId, row.UserId),
+    })));
+    const roleByTenantUser = new Map(tenantRoleIds.map((item) => [item.tenantUserId, item.roleId]));
+
     return json({
       members: membersResult.recordset.map((row) => ({
         tenantUserId: String(row.TenantUserId),
+        tenantRoleId: roleByTenantUser.get(String(row.TenantUserId)) ?? null,
         userId: String(row.UserId),
         fullName: String(row.FullName),
         mobile: row.Mobile == null ? "" : String(row.Mobile),
