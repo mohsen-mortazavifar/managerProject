@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "bootstrap:admin": "node --env-file=.env.local scripts/create-admin.mjs",
-    "provisioning:worker": "node --env-file=.env.local scripts/provisioning-worker.mjs"
+    "provisioning:worker": "node --env-file=.env.local scripts/provisioning-worker.mjs",
+    "subscription:worker": "node --env-file=.env.local scripts/subscription-worker.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.61.0",
