@@ -124,3 +124,24 @@ export async function syncTenantSecurityUser(input: TenantUserInput): Promise<vo
     await pool.close();
   }
 }
+
+export async function getTenantSecurityUserRoleId(
+  tenantId: string | number | bigint,
+  masterUserId: string | number | bigint,
+): Promise<string | null> {
+  const pool = await getTenantPool(tenantId);
+  try {
+    const result = await pool.request()
+      .input("masterUserId", sql.BigInt, masterUserId)
+      .query(`
+        SELECT TOP (1) ur.RoleId
+        FROM security.Users u
+        INNER JOIN security.UserRoles ur ON ur.UserId = u.UserId
+        WHERE u.MasterUserId = @masterUserId
+        ORDER BY ur.RoleId;
+      `);
+    return result.recordset[0] ? String(result.recordset[0].RoleId) : null;
+  } finally {
+    await pool.close();
+  }
+}
