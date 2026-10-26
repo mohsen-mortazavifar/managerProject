@@ -30,8 +30,8 @@ export async function POST(request: Request) {
   try { body = await request.json(); } catch { return respond({ error: "Invalid request." }, 400); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return respond({ error: "Invalid request." }, 400);
   const input = body as { tenantId?: unknown; tenantDatabaseId?: unknown };
-  if (typeof input.tenantId !== "string" || !/^\\d{1,19}$/.test(input.tenantId) ||
-      typeof input.tenantDatabaseId !== "string" || !/^\\d{1,19}$/.test(input.tenantDatabaseId)) {
+  if (typeof input.tenantId !== "string" || !/^\d{1,19}$/.test(input.tenantId) ||
+      typeof input.tenantDatabaseId !== "string" || !/^\d{1,19}$/.test(input.tenantDatabaseId)) {
     return respond({ error: "Invalid tenant database request." }, 400);
   }
 
