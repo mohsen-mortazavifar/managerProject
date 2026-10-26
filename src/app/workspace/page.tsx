@@ -58,6 +58,22 @@ export default function WorkspacePage() {
         router.replace("/onboarding");
         return;
       }
+      const subscriptionResponse = await fetch("/api/subscription-orders", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      if (!subscriptionResponse.ok) {
+        setError("وضعیت اشتراک بررسی نشد. دوباره تلاش کنید.");
+        return;
+      }
+      const subscriptionData = await subscriptionResponse.json() as { orders?: Array<{ status: string; endsAt: string }> };
+      const hasActivePlan = (subscriptionData.orders || []).some((order) =>
+        order.status === "Active" && new Date(order.endsAt).getTime() > Date.now()
+      );
+      if (!hasActivePlan) {
+        router.replace("/workspace/subscription2");
+        return;
+      }
       setData(result);
       setError("");
     } catch {
