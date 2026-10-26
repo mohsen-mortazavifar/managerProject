@@ -89,7 +89,7 @@ export default function Home() {
 
   useEffect(() => {
     const token = sessionStorage.getItem("repairMasterAccessToken");
-    if (!token) { router.replace("/login"); return; }
+    if (!token) { router.replace("/owner-login"); return; }
     let cancelled = false;
     void (async () => {
       try {
@@ -98,7 +98,7 @@ export default function Home() {
         if (cancelled) return;
         if (response.status === 401) {
           sessionStorage.removeItem("repairMasterAccessToken");
-          router.replace("/login");
+          router.replace("/owner-login");
           return;
         }
         if (!response.ok || !data.user?.isPlatformUser) {
@@ -107,7 +107,7 @@ export default function Home() {
         }
         setCheckingAccess(false);
       } catch {
-        if (!cancelled) router.replace("/login");
+        if (!cancelled) router.replace("/owner-login");
       }
     })();
     return () => { cancelled = true; };
