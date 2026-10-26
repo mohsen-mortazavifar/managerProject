@@ -1,221 +1,306 @@
-"use client";
+import { NextResponse } from "next/server";
+import { getSqlPool, sql } from "@/lib/db";
+import { requireAuth } from "@/lib/auth/guard";
+import { normalizeMobile } from "@/lib/auth/otp";
+import { getTenantSecurityRoles, setTenantSecurityUserRole, syncTenantSecurityUser } from "@/lib/tenant-security";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowRight, CircleUserRound, LogOut, Plus, RefreshCw, ShieldCheck, UserRoundX, Users } from "lucide-react";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-type Member = {
-  tenantUserId: string; userId: string; fullName: string; mobile: string; email: string;
-  isOwner: boolean; isActive: boolean; hasPassword: boolean; joinedAt: string | null; roles: string[];
-};
-type Role = { roleId: string; name: string; description: string };
-type Invitation = { invitationId: string; roleName: string; expiresAt: string; acceptedAt: string | null; revokedAt: string | null; createdAt: string; isExpired: boolean };
-type ResponseData = { error?: string; message?: string; members?: Member[]; roles?: Role[]; invitations?: Invitation[]; inviteUrl?: string };
+const json = (body: object, status = 200) =>
+  NextResponse.json(body, {
+    status,
+    headers: { "Cache-Control": "no-store" },
+  });
 
-const roleLabels: Record<string, string> = {
-  TenantOwner: "مالک کسب‌وکار",
-  TenantManager: "مدیر کسب‌وکار",
-  TenantUser: "کاربر عادی",
-  Administrator: "مدیر کسب‌وکار",
-  Technician: "تعمیرکار",
-  Reception: "پذیرش",
-};
+async function getOwnerTenant(userId: string) {
+  const pool = await getSqlPool();
+  const result = await pool.request()
+    .input("userId", sql.BigInt, userId)
+    .query(`
+      SELECT TOP (1) tu.TenantId
+      FROM dbo.TenantUsers tu
+      INNER JOIN dbo.Tenants t ON t.TenantId = tu.TenantId
+      WHERE tu.UserId = @userId
+        AND tu.IsActive = 1
+        AND tu.IsOwner = 1
+        AND t.DeletedAt IS NULL
+        AND t.Status = N'Active'
+      ORDER BY t.CreatedAt DESC;
+    `);
+  return result.recordset[0] ?? null;
+}
 
-export default function WorkspaceUsersPage() {
-  const router = useRouter();
-  const [members, setMembers] = useState<Member[]>([]);
-  const [roles, setRoles] = useState<Role[]>([]);
-  const [roleId, setRoleId] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [changingId, setChangingId] = useState("");
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [invitations, setInvitations] = useState<Invitation[]>([]); const [inviteUrl, setInviteUrl] = useState("");  const [inviteBusy, setInviteBusy] = useState(false);
-  const [passwordTarget, setPasswordTarget] = useState<Member | null>(null);
-  const [initialPassword, setInitialPassword] = useState("");
-  const [confirmInitialPassword, setConfirmInitialPassword] = useState("");
-  const [passwordBusy, setPasswordBusy] = useState(false);
+export async function GET(request: Request) {
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
 
-  const load = useCallback(async () => {
-    const token = sessionStorage.getItem("repairMasterAccessToken");
-    if (!token) { router.replace("/owner-login"); return; }
-    setLoading(true);
-    try {
-      const response = await fetch("/api/workspace/users", {
-        headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
-      });
-      const result = await response.json() as ResponseData;
-      if (response.status === 401) {
-        sessionStorage.removeItem("repairMasterAccessToken");
-        router.replace("/owner-login");
-        return;
-      }
-      if (!response.ok) throw new Error(result.error || "دریافت فهرست اعضا انجام نشد.");
-      setMembers(result.members || []);
-      setRoles(result.roles || []);
-      setRoleId((current) => current || result.roles?.[0]?.roleId || "");
-      const inviteResponse = await fetch("/api/workspace/invitations", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
-      const inviteResult = await inviteResponse.json() as ResponseData;
-      if (inviteResponse.ok) setInvitations(inviteResult.invitations || []);
-      setError("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "ارتباط با سرور برقرار نشد.");
-    } finally { setLoading(false); }
-  }, [router]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => { void load(); }, 0);
-    return () => window.clearTimeout(timer);
-  }, [load]);
-
-  async function createInvitation() {
-    const token = sessionStorage.getItem("repairMasterAccessToken");
-    if (!token) { router.replace("/owner-login"); return; }
-    setInviteBusy(true); setError(""); setNotice(""); setInviteUrl("");
-    try {
-      const response = await fetch("/api/workspace/invitations", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ roleId }),
-      });
-      const result = await response.json() as ResponseData;
-      if (!response.ok || !result.inviteUrl) throw new Error(result.error || "ایجاد دعوت‌نامه انجام نشد.");
-      setInviteUrl(result.inviteUrl);
-      setNotice(result.message || "دعوت‌نامه ایجاد شد.");
-      await load();
-    } catch (e) { setError(e instanceof Error ? e.message : "ایجاد دعوت‌نامه انجام نشد."); }
-    finally { setInviteBusy(false); }
+  if (auth.user.isPlatformUser) {
+    return json({ error: "این بخش مخصوص مالک کسب‌وکار است." }, 403);
   }
 
-  async function revokeInvitation(invitationId: string) {
-    const token = sessionStorage.getItem("repairMasterAccessToken");
-    if (!token) { router.replace("/owner-login"); return; }
-    if (!window.confirm("این دعوت‌نامه لغو شود؟")) return;
-    try {
-      const response = await fetch("/api/workspace/invitations", {
-        method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ invitationId }),
-      });
-      const result = await response.json() as ResponseData;
-      if (!response.ok) throw new Error(result.error || "لغو دعوت‌نامه انجام نشد.");
-      setNotice(result.message || "دعوت‌نامه لغو شد.");
-      await load();
-    } catch (e) { setError(e instanceof Error ? e.message : "لغو دعوت‌نامه انجام نشد."); }
-  }
-
-  async function updateMember(member: Member, change: { isActive?: boolean; roleId?: string }) {
-    const token = sessionStorage.getItem("repairMasterAccessToken");
-    if (!token) { router.replace("/owner-login"); return; }
-    const actionText = change.roleId ? "نقش عضو تغییر کند؟" : change.isActive ? "عضویت فعال شود؟" : "عضویت غیرفعال شود؟";
-    if (!window.confirm(`برای «${member.fullName}» ${actionText}`)) return;
-    setChangingId(member.tenantUserId); setError(""); setNotice("");
-    try {
-      const response = await fetch("/api/workspace/users", {
-        method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ tenantUserId: member.tenantUserId, ...change }),
-      });
-      const result = await response.json() as ResponseData;
-      if (!response.ok) throw new Error(result.error || "تغییر عضو انجام نشد.");
-      setNotice(result.message || "تغییرات ذخیره شد.");
-      await load();
-    } catch (e) { setError(e instanceof Error ? e.message : "تغییر عضو انجام نشد."); }
-    finally { setChangingId(""); }
-  }
-
-  async function toggleMember(member: Member) {
-    await updateMember(member, { isActive: !member.isActive });
-  }
-
-  async function setMemberPassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!passwordTarget) return;
-    const token = sessionStorage.getItem("repairMasterAccessToken");
-    if (!token) { router.replace("/owner-login"); return; }
-    setPasswordBusy(true); setError(""); setNotice("");
-    try {
-      const response = await fetch("/api/workspace/users/password", {
-        method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ tenantUserId: passwordTarget.tenantUserId, password: initialPassword, confirmPassword: confirmInitialPassword }),
-      });
-      const result = await response.json() as ResponseData;
-      if (!response.ok) throw new Error(result.error || "تعیین رمز عبور انجام نشد.");
-      setNotice(result.message || "رمز اولیه ثبت شد.");
-      setPasswordTarget(null); setInitialPassword(""); setConfirmInitialPassword("");
-      await load();
-    } catch (e) { setError(e instanceof Error ? e.message : "تعیین رمز عبور انجام نشد."); }
-    finally { setPasswordBusy(false); }
-  }
-
-
-  async function logout() {
-    const token = sessionStorage.getItem("repairMasterAccessToken");
-    if (token) {
-      try { await fetch("/api/auth/logout", { method: "POST", headers: { Authorization: `Bearer ${token}` } }); } catch { /* clear local token */ }
+  try {
+    const tenant = await getOwnerTenant(auth.user.userId);
+    if (!tenant) {
+      return json({ error: "دسترسی مالک کسب‌وکار لازم است یا کسب‌وکار هنوز فعال نشده است." }, 403);
     }
-    sessionStorage.removeItem("repairMasterAccessToken");
-    router.replace("/owner-login");
+
+    const pool = await getSqlPool();
+    const [membersResult, tenantRoles] = await Promise.all([
+      pool.request()
+        .input("tenantId", sql.BigInt, tenant.TenantId)
+        .query(`
+          SELECT
+            tu.TenantUserId,
+            u.UserId,
+            u.FullName,
+            u.Mobile,
+            u.Email,
+            CASE WHEN u.PasswordHash IS NULL OR LTRIM(RTRIM(u.PasswordHash)) = N'' THEN 0 ELSE 1 END AS HasPassword,
+            tu.IsOwner,
+            tu.IsActive,
+            tu.JoinedAt,
+            STRING_AGG(r.Name, N',') AS RoleNames
+          FROM dbo.TenantUsers tu
+          INNER JOIN dbo.Users u ON u.UserId = tu.UserId
+          LEFT JOIN dbo.UserRoles ur ON ur.TenantUserId = tu.TenantUserId
+          LEFT JOIN dbo.Roles r ON r.RoleId = ur.RoleId
+          WHERE tu.TenantId = @tenantId
+            AND u.DeletedAt IS NULL
+          GROUP BY
+            tu.TenantUserId, u.UserId, u.FullName, u.Mobile,
+            u.Email, u.PasswordHash, tu.IsOwner, tu.IsActive, tu.JoinedAt
+          ORDER BY tu.IsOwner DESC, u.FullName;
+        `),
+      getTenantSecurityRoles(tenant.TenantId),
+    ]);
+
+    return json({
+      members: membersResult.recordset.map((row) => ({
+        tenantUserId: String(row.TenantUserId),
+        userId: String(row.UserId),
+        fullName: String(row.FullName),
+        mobile: row.Mobile == null ? "" : String(row.Mobile),
+        email: row.Email == null ? "" : String(row.Email),
+        hasPassword: Boolean(row.HasPassword),
+        isOwner: Boolean(row.IsOwner),
+        isActive: Boolean(row.IsActive),
+        joinedAt: row.JoinedAt,
+        roles: row.RoleNames ? String(row.RoleNames).split(",") : [],
+      })),
+      roles: tenantRoles,
+    });
+  } catch {
+    return json({ error: "دریافت فهرست کاربران ممکن نشد." }, 503);
+  }
+}
+
+export async function POST(request: Request) {
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
+
+  if (auth.user.isPlatformUser) {
+    return json({ error: "این بخش مخصوص مالک کسب‌وکار است." }, 403);
   }
 
-  return (
-    <main className="workspace-page" dir="rtl">
-      <header className="workspace-topbar">
-        <div className="workspace-brand"><span>RM</span><div><strong>Repair Master</strong><small>مدیریت کاربران</small></div></div>
-        <div className="workspace-top-actions">
-          <button onClick={() => router.push("/workspace")}><ArrowRight size={16} /> بازگشت به داشبورد</button>
-          <button onClick={() => void load()} disabled={loading}><RefreshCw size={16} /> به‌روزرسانی</button>
-          <button onClick={() => void logout()}><LogOut size={16} /> خروج</button>
-        </div>
-      </header>
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "درخواست نامعتبر است." }, 400);
+  }
 
-      <section className="workspace-content">
-        <div className="workspace-welcome">
-          <div><span className="workspace-eyebrow">اعضا و دسترسی‌ها</span><h1>کاربران کسب‌وکار</h1><p>اعضای تیم را مدیریت کنید و برای هر نفر نقش مناسب تعیین کنید.</p></div>
-          <div className="workspace-ready"><ShieldCheck size={18} /><span>دسترسی مالک</span></div>
-        </div>
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return json({ error: "درخواست نامعتبر است." }, 400);
+  }
 
-        {error && <div className="workspace-error" role="alert">{error}</div>}
-        {notice && <div className="users-notice" role="status">{notice}</div>}
+  const input = body as { mobile?: unknown; roleId?: unknown };
+  if (
+    typeof input.mobile !== "string" ||
+    (typeof input.roleId !== "string" && typeof input.roleId !== "number") ||
+    !/^[0-9]+$/.test(String(input.roleId))
+  ) {
+    return json({ error: "شماره موبایل یا نقش انتخاب‌شده معتبر نیست." }, 400);
+  }
 
-        <section className="users-panel">
-          <div className="users-panel-heading"><span><Plus size={19} /></span><div><h2>دعوت عضو جدید</h2><p>یک لینک اختصاصی بسازید و برای فرد ارسال کنید. عضویت فقط پس از تأیید پیامک فعال می‌شود.</p></div></div>
-          <div className="users-add-form">
-            <label>نقش کاربر
-              <select value={roleId} onChange={(e) => setRoleId(e.target.value)}>
-                {roles.map((role) => <option key={role.roleId} value={role.roleId}>{roleLabels[role.name] || role.name}</option>)}
-              </select>
-            </label>
-            <button className="users-primary" type="button" onClick={() => void createInvitation()} disabled={inviteBusy}><Plus size={16} />{inviteBusy ? "در حال ساخت..." : "ایجاد لینک دعوت"}</button>
-          </div>
-          {inviteUrl && <div className="users-invite-link"><label>لینک دعوت (اعتبار ۷ روز)</label><input readOnly value={inviteUrl} dir="ltr" onFocus={(e) => e.currentTarget.select()} /><button type="button" className="users-primary" onClick={() => { void navigator.clipboard.writeText(inviteUrl).then(() => setNotice("لینک دعوت کپی شد.")); }}>کپی لینک</button></div>}
-        </section>
+  let mobile: string;
+  try { mobile = normalizeMobile(input.mobile); } catch {
+    return json({ error: "شماره موبایل معتبر نیست. شماره ایران را با 09 وارد کنید." }, 400);
+  }
 
-        <section className="users-panel">
-          <div className="users-list-heading"><div className="users-panel-heading"><span><ShieldCheck size={19} /></span><div><h2>دعوت‌نامه‌ها</h2><p>دعوت‌های ایجادشده و وضعیت آن‌ها</p></div></div><span className="users-count">{invitations.length} دعوت</span></div>
-          {invitations.length === 0 ? <div className="users-empty">دعوت‌نامه‌ای ایجاد نشده است.</div> : <div className="users-table-wrap"><table className="users-table"><thead><tr><th>نقش</th><th>ایجاد</th><th>انقضا</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>
-            {invitations.map((invite) => {
-              const status = invite.acceptedAt ? "پذیرفته‌شده" : invite.revokedAt ? "لغوشده" : invite.isExpired ? "منقضی‌شده" : "در انتظار";
-              return <tr key={invite.invitationId}><td>{roleLabels[invite.roleName] || invite.roleName}</td><td>{new Date(invite.createdAt).toLocaleDateString("fa-IR")}</td><td>{new Date(invite.expiresAt).toLocaleDateString("fa-IR")}</td><td>{status}</td><td>{!invite.acceptedAt && !invite.revokedAt && status === "در انتظار" && <button className="users-toggle users-toggle-off" onClick={() => void revokeInvitation(invite.invitationId)}>لغو دعوت</button>}</td></tr>;
-            })}
-          </tbody></table></div>}
-        </section>
+  try {
+    const tenant = await getOwnerTenant(auth.user.userId);
+    if (!tenant) {
+      return json({ error: "دسترسی مالک کسب‌وکار لازم است یا کسب‌وکار هنوز فعال نشده است." }, 403);
+    }
 
-        <section className="users-panel">
-          <div className="users-list-heading"><div className="users-panel-heading"><span><Users size={19} /></span><div><h2>اعضای تیم</h2><p>وضعیت عضویت و نقش هر عضو</p></div></div><span className="users-count">{members.length} عضو</span></div>
-          {loading ? <div className="users-empty">در حال دریافت فهرست اعضا...</div> : members.length === 0 ? <div className="users-empty"><CircleUserRound size={28} /><strong>هنوز عضوی ثبت نشده است</strong><span>از فرم بالا برای افزودن اعضای تیم استفاده کنید.</span></div> : (
-            <div className="users-table-wrap"><table className="users-table">
-              <thead><tr><th>کاربر</th><th>شماره موبایل</th><th>نقش</th><th>وضعیت</th><th>عملیات</th></tr></thead>
-              <tbody>{members.map((member) => <tr key={member.tenantUserId}>
-                <td><strong>{member.fullName}</strong>{member.email && <small dir="ltr">{member.email}</small>}{member.isOwner && <small>مالک کسب‌وکار</small>}</td>
-                <td dir="ltr" className="users-mobile">{member.mobile || "—"}</td>
-                <td>{member.isOwner ? <span className="users-owner-label">مالک کسب‌وکار</span> : <select className="users-role-select" aria-label={`نقش ${member.fullName}`} value={roles.find((role) => member.roles.includes(role.name))?.roleId || ""} disabled={changingId === member.tenantUserId || !member.isActive} onChange={(e) => { if (e.target.value) void updateMember(member, { roleId: e.target.value }); }}><option value="" disabled>انتخاب نقش</option>{roles.map((role) => <option key={role.roleId} value={role.roleId}>{roleLabels[role.name] || role.name}</option>)}</select>}</td>
-                <td><span className={`users-status ${member.isActive ? "users-status-active" : "users-status-off"}`}>{member.isActive ? "فعال" : "غیرفعال"}</span></td>
-                <td>{member.isOwner ? <div className="users-member-actions"><span className="users-owner-label">مالک کسب‌وکار</span>{member.hasPassword ? <span className="users-owner-label">رمز ثبت شده</span> : <button type="button" className="users-primary" onClick={() => { setPasswordTarget(member); setInitialPassword(""); setConfirmInitialPassword(""); }}>تعیین رمز عبور</button>}{passwordTarget?.tenantUserId === member.tenantUserId && <form className="users-invite-link" onSubmit={(e) => void setMemberPassword(e)}><label>رمز عبور (حداقل ۱۲ نویسه)</label><input type="password" autoComplete="new-password" required minLength={12} maxLength={1024} value={initialPassword} onChange={(e) => setInitialPassword(e.target.value)} /><label>تکرار رمز</label><input type="password" autoComplete="new-password" required minLength={12} maxLength={1024} value={confirmInitialPassword} aria-invalid={confirmInitialPassword.length > 0 && initialPassword !== confirmInitialPassword} onChange={(e) => setConfirmInitialPassword(e.target.value)} />{confirmInitialPassword.length > 0 && initialPassword !== confirmInitialPassword && <small className="users-password-mismatch" role="alert">رمز عبور و تکرار آن یکسان نیستند.</small>}<button className="users-primary" type="submit" disabled={passwordBusy || initialPassword.length < 12 || initialPassword !== confirmInitialPassword}>{passwordBusy ? "در حال ذخیره..." : "ذخیره رمز"}</button><button className="users-toggle" type="button" onClick={() => setPasswordTarget(null)}>انصراف</button></form>}</div> : <div className="users-member-actions"><span className="users-owner-label">{member.roles.length ? member.roles.map((r) => roleLabels[r] || r).join("، ") : "نقش ثبت‌شده در پنل اصلی"}</span><button className={`users-toggle ${member.isActive ? "users-toggle-off" : "users-toggle-on"}`} disabled={changingId === member.tenantUserId} onClick={() => void toggleMember(member)}><UserRoundX size={14} />{changingId === member.tenantUserId ? "در حال ثبت..." : member.isActive ? "غیرفعال‌کردن" : "فعال‌کردن"}</button>{member.hasPassword ? <span className="users-owner-label">رمز ثبت شده</span> : <button type="button" className="users-primary" onClick={() => { setPasswordTarget(member); setInitialPassword(""); setConfirmInitialPassword(""); }} disabled={!member.isActive || passwordBusy}>تعیین رمز اولیه</button>}{passwordTarget?.tenantUserId === member.tenantUserId && <form className="users-invite-link" onSubmit={(e) => void setMemberPassword(e)}><label>رمز اولیه (حداقل ۱۲ نویسه)</label><input type="password" autoComplete="new-password" required minLength={12} maxLength={1024} value={initialPassword} onChange={(e) => setInitialPassword(e.target.value)} /><label>تکرار رمز</label><input type="password" autoComplete="new-password" required minLength={12} maxLength={1024} value={confirmInitialPassword} onChange={(e) => setConfirmInitialPassword(e.target.value)} /><button className="users-primary" type="submit" disabled={passwordBusy}>{passwordBusy ? "در حال ذخیره..." : "ذخیره رمز"}</button><button className="users-toggle" type="button" onClick={() => setPasswordTarget(null)}>انصراف</button></form>}</div>}</td>
-              </tr>)}</tbody>
-            </table></div>
-          )}
-          <p className="users-footnote">برای افزودن کاربر جدید، ابتدا باید حساب کاربری او با شماره موبایل تأییدشده وجود داشته باشد. غیرفعال‌کردن عضویت، حساب اصلی او را حذف نمی‌کند.</p>
-        </section>
-      </section>
-    </main>
-  );
+    const pool = await getSqlPool();
+    const tx = new sql.Transaction(pool);
+    await tx.begin();
+
+    try {
+      const userResult = await new sql.Request(tx)
+        .input("mobile", sql.NVarChar(40), mobile)
+        .query(`
+          SELECT TOP (1) UserId, IsActive, MobileVerifiedAt, PasswordHash, Mobile, FullName
+          FROM dbo.Users
+          WHERE Mobile = @mobile AND DeletedAt IS NULL;
+        `);
+      const user = userResult.recordset[0];
+
+      if (!user || !Boolean(user.IsActive) || !user.MobileVerifiedAt) {
+        await tx.rollback();
+        return json({ error: "حساب فعال و تأییدشده‌ای با این شماره پیدا نشد." }, 404);
+      }
+
+      const existing = await new sql.Request(tx)
+        .input("tenantId", sql.BigInt, tenant.TenantId)
+        .input("userId", sql.BigInt, user.UserId)
+        .query(`
+          SELECT TOP (1) TenantUserId, IsActive
+          FROM dbo.TenantUsers WITH (UPDLOCK, HOLDLOCK)
+          WHERE TenantId = @tenantId AND UserId = @userId;
+        `);
+
+      let tenantUserId: string;
+      if (existing.recordset[0]) {
+        if (Boolean(existing.recordset[0].IsActive)) {
+          await tx.rollback();
+          return json({ error: "این کاربر از قبل عضو این کسب‌وکار است." }, 409);
+        }
+
+        await new sql.Request(tx)
+          .input("tenantUserId", sql.BigInt, existing.recordset[0].TenantUserId)
+          .query(`
+            UPDATE dbo.TenantUsers
+            SET IsActive = 1
+            WHERE TenantUserId = @tenantUserId AND IsOwner = 0;
+          `);
+        tenantUserId = String(existing.recordset[0].TenantUserId);
+      } else {
+        const membership = await new sql.Request(tx)
+          .input("tenantId", sql.BigInt, tenant.TenantId)
+          .input("userId", sql.BigInt, user.UserId)
+          .query(`
+            INSERT INTO dbo.TenantUsers (TenantId, UserId, IsOwner, IsActive, JoinedAt)
+            OUTPUT INSERTED.TenantUserId
+            VALUES (@tenantId, @userId, 0, 1, SYSUTCDATETIME());
+          `);
+        tenantUserId = String(membership.recordset[0].TenantUserId);
+      }
+
+      const tenantRoles = await getTenantSecurityRoles(tenant.TenantId);
+      const selectedRole = tenantRoles.find((role) => role.roleId === String(input.roleId));
+      if (!selectedRole) throw new Error("ROLE_NOT_FOUND");
+
+      // Keep the master membership role for existing workspace authorization.
+      const masterRoleName = selectedRole.name === "Administrator" ? "TenantManager" : "TenantUser";
+      const roleResult = await new sql.Request(tx)
+        .input("roleName", sql.NVarChar(200), masterRoleName)
+        .query("SELECT TOP (1) RoleId FROM dbo.Roles WHERE Name = @roleName AND IsSystemRole = 1;");
+      const roleId = roleResult.recordset[0]?.RoleId;
+      if (!roleId) throw new Error("ROLE_NOT_FOUND");
+
+      await syncTenantSecurityUser({
+        tenantId: tenant.TenantId,
+        masterUserId: user.UserId,
+        userName: String(user.Mobile || mobile),
+        displayName: String(user.FullName || user.Mobile || mobile).slice(0, 150),
+        passwordHash: String(user.PasswordHash || ""),
+        roleId: selectedRole.roleId,
+        isActive: true,
+      });
+
+      await new sql.Request(tx)
+        .input("tenantUserId", sql.BigInt, tenantUserId)
+        .input("roleId", sql.BigInt, roleId)
+        .query(`
+          DELETE FROM dbo.UserRoles
+          WHERE TenantUserId = @tenantUserId;
+
+          INSERT INTO dbo.UserRoles (TenantUserId, RoleId, AssignedAt)
+          VALUES (@tenantUserId, @roleId, SYSUTCDATETIME());
+        `);
+
+      await tx.commit();
+      return json({ message: "کاربر به کسب‌وکار اضافه شد." }, 201);
+    } catch {
+      try { await tx.rollback(); } catch { /* transaction may already have ended */ }
+      throw new Error("MEMBER_ADD_FAILED");
+    }
+  } catch {
+    return json({ error: "افزودن کاربر انجام نشد." }, 503);
+  }
+}
+
+
+export async function PATCH(request: Request) {
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
+  if (auth.user.isPlatformUser) return json({ error: "این بخش مخصوص مالک کسب‌وکار است." }, 403);
+  let body: unknown;
+  try { body = await request.json(); } catch { return json({ error: "درخواست نامعتبر است." }, 400); }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "درخواست نامعتبر است." }, 400);
+  const input = body as { tenantUserId?: unknown; isActive?: unknown; roleId?: unknown };
+  if (typeof input.tenantUserId !== "string" || !/^\d+$/.test(input.tenantUserId)) return json({ error: "شناسه عضویت معتبر نیست." }, 400);
+  const hasActiveChange = typeof input.isActive === "boolean";
+  const hasRoleChange = (typeof input.roleId === "string" || typeof input.roleId === "number") && /^\d+$/.test(String(input.roleId));
+  if ((!hasActiveChange && !hasRoleChange) ||
+      (input.isActive !== undefined && typeof input.isActive !== "boolean") ||
+      (input.roleId !== undefined && !hasRoleChange)) {
+    return json({ error: "وضعیت یا نقش انتخاب‌شده معتبر نیست." }, 400);
+  }
+  try {
+    const tenant = await getOwnerTenant(auth.user.userId);
+    if (!tenant) return json({ error: "این عملیات فقط برای مالک کسب‌وکار مجاز است." }, 403);
+    const pool = await getSqlPool();
+    const tx = new sql.Transaction(pool);
+    await tx.begin();
+    try {
+      const memberResult = await new sql.Request(tx).input("tenantId", sql.BigInt, tenant.TenantId)
+        .input("tenantUserId", sql.BigInt, input.tenantUserId)
+        .query(`SELECT TenantUserId, IsOwner FROM dbo.TenantUsers WITH (UPDLOCK, HOLDLOCK)
+                WHERE TenantId = @tenantId AND TenantUserId = @tenantUserId;`);
+      const member = memberResult.recordset[0];
+      if (!member || Boolean(member.IsOwner)) {
+        await tx.rollback();
+        return json({ error: "عضویت پیدا نشد یا امکان تغییر مالک وجود ندارد." }, 404);
+      }
+      if (hasActiveChange) {
+        await new sql.Request(tx).input("tenantId", sql.BigInt, tenant.TenantId)
+          .input("tenantUserId", sql.BigInt, input.tenantUserId).input("isActive", sql.Bit, input.isActive)
+          .query(`UPDATE dbo.TenantUsers SET IsActive = @isActive
+                  WHERE TenantId = @tenantId AND TenantUserId = @tenantUserId AND IsOwner = 0;`);
+      }
+      if (hasRoleChange) {
+        const tenantRoles = await getTenantSecurityRoles(tenant.TenantId);
+        const selectedRole = tenantRoles.find((role) => role.roleId === String(input.roleId));
+        if (!selectedRole) throw new Error("ROLE_NOT_FOUND");
+
+        // Update the tenant-local identity first; don't commit a master role change if tenant sync fails.
+        const masterRoleName = selectedRole.name === "Administrator" ? "TenantManager" : "TenantUser";
+        const masterRoleResult = await new sql.Request(tx).input("roleName", sql.NVarChar(200), masterRoleName)
+          .query("SELECT TOP (1) RoleId FROM dbo.Roles WHERE Name = @roleName AND IsSystemRole = 1;");
+        const masterRoleId = masterRoleResult.recordset[0]?.RoleId;
+        if (!masterRoleId) throw new Error("MASTER_ROLE_NOT_FOUND");
+
+        const identityResult = await new sql.Request(tx)
+          .input("tenantUserId", sql.BigInt, input.tenantUserId)
+          .query("SELECT UserId FROM dbo.TenantUsers WHERE TenantUserId = @tenantUserId;");
+        const memberUserId = identityResult.recordset[0]?.UserId;
+        if (!memberUserId) throw new Error("MEMBER_NOT_FOUND");
+
+        await setTenantSecurityUserRole(tenant.TenantId, memberUserId, selectedRole.roleId);
+        await new sql.Request(tx).input("tenantUserId", sql.BigInt, input.tenantUserId).input("roleId", sql.BigInt, masterRoleId)
+          .query(`DELETE FROM dbo.UserRoles WHERE TenantUserId = @tenantUserId;
+                  INSERT INTO dbo.UserRoles (TenantUserId, RoleId, AssignedAt)
+                  VALUES (@tenantUserId, @roleId, SYSUTCDATETIME());`);
+      }
+      await tx.commit();
+      return json({ message: hasRoleChange ? "نقش عضو با موفقیت تغییر کرد." : input.isActive ? "عضویت فعال شد." : "عضویت غیرفعال شد." });
+    } catch (error) {
+      try { await tx.rollback(); } catch { /* transaction may already have ended */ }
+      throw error;
+    }
+  } catch { return json({ error: "تغییر وضعیت یا نقش عضو انجام نشد." }, 503); }
 }
