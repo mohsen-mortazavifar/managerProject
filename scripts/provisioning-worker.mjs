@@ -314,6 +314,85 @@ async function applyInitialMigration(name, serverName, script, checksum) {
   }
 }
 
+async function seedTenantOwner(masterPool, databaseName, serverName, job) {
+  const ownerResult = await masterPool.request()
+    .input("tenantId", sql.BigInt, job.TenantId)
+    .query(`
+      SELECT TOP (1) u.UserId, u.Email, u.Mobile, u.FullName, u.PasswordHash, u.IsActive
+      FROM dbo.TenantUsers tu
+      INNER JOIN dbo.Users u ON u.UserId = tu.UserId
+      WHERE tu.TenantId = @tenantId AND tu.IsOwner = 1 AND tu.IsActive = 1
+        AND u.DeletedAt IS NULL
+      ORDER BY tu.TenantUserId;
+    `);
+  const owner = ownerResult.recordset[0];
+  if (!owner) throw new Error("TENANT_OWNER_NOT_FOUND");
+
+  const userName = String(owner.Mobile || owner.Email || `owner-${owner.UserId}`).trim();
+  const displayName = String(owner.FullName || userName).trim();
+  const passwordHash = String(owner.PasswordHash || "");
+  if (!passwordHash) throw new Error("TENANT_OWNER_PASSWORD_HASH_MISSING");
+
+  const tenantPool = await connect(
+    databaseName, serverName,
+    process.env.DB_USER, process.env.DB_PASSWORD,
+    process.env.TENANT_DB_PORT || process.env.DB_PORT
+  );
+  try {
+    await tenantPool.request()
+      .input("masterUserId", sql.BigInt, owner.UserId)
+      .input("userName", sql.NVarChar(100), userName.slice(0, 100))
+      .input("displayName", sql.NVarChar(150), displayName.slice(0, 150))
+      .input("passwordHash", sql.NVarChar(300), passwordHash.slice(0, 300))
+      .input("isActive", sql.Bit, Boolean(owner.IsActive))
+      .query(`
+        IF NOT EXISTS (SELECT 1 FROM security.Roles WHERE RoleId = 1)
+          THROW 51010, 'BUSINESS_MANAGER_ROLE_ID_1_MISSING', 1;
+
+        DECLARE @tenantUserId BIGINT;
+        SELECT @tenantUserId = UserId
+        FROM security.Users WITH (UPDLOCK, HOLDLOCK)
+        WHERE MasterUserId = @masterUserId;
+
+        IF @tenantUserId IS NULL
+        BEGIN
+          SELECT @tenantUserId = UserId
+          FROM security.Users
+          WHERE UserName = @userName AND MasterUserId IS NULL;
+
+          IF @tenantUserId IS NULL
+          BEGIN
+            INSERT INTO security.Users
+              (UserName, DisplayName, PasswordHash, IsActive, CreatedAt, UpdatedAt, MasterUserId)
+            VALUES
+              (@userName, @displayName, @passwordHash, @isActive, SYSUTCDATETIME(), SYSUTCDATETIME(), @masterUserId);
+            SET @tenantUserId = SCOPE_IDENTITY();
+          END
+          ELSE
+          BEGIN
+            UPDATE security.Users
+            SET DisplayName = @displayName, PasswordHash = @passwordHash,
+                IsActive = @isActive, UpdatedAt = SYSUTCDATETIME(), MasterUserId = @masterUserId
+            WHERE UserId = @tenantUserId;
+          END
+        END
+        ELSE
+        BEGIN
+          UPDATE security.Users
+          SET UserName = @userName, DisplayName = @displayName,
+              PasswordHash = @passwordHash, IsActive = @isActive, UpdatedAt = SYSUTCDATETIME()
+          WHERE UserId = @tenantUserId;
+        END;
+
+        IF NOT EXISTS (SELECT 1 FROM security.UserRoles WHERE UserId = @tenantUserId AND RoleId = 1)
+          INSERT INTO security.UserRoles (UserId, RoleId, CreatedAt)
+          VALUES (@tenantUserId, 1, SYSUTCDATETIME());
+      `);
+  } finally {
+    await tenantPool.close();
+  }
+}
+
 async function processJob(pool, job, migration, checksum) {
   try {
     await writeLog(pool, job, "CreatingDatabase", "CreatingDatabase", "Creating tenant database.");
@@ -324,6 +403,7 @@ async function processJob(pool, job, migration, checksum) {
     await applyInitialMigration(databaseName, serverName, migration, checksum);
 
     await provisionTenantSqlCredentials(pool, databaseName, job, serverName);
+    await seedTenantOwner(pool, databaseName, serverName, job);
     const tx = new sql.Transaction(pool);
     await tx.begin();
     try {
