@@ -304,6 +304,22 @@ BEGIN
 END;
 GO
 
+IF OBJECT_ID(N'repair.ServiceCatalog', N'U') IS NULL
+BEGIN
+  CREATE TABLE repair.ServiceCatalog (
+    ServiceCatalogId BIGINT IDENTITY(1,1) NOT NULL CONSTRAINT PK_repair_ServiceCatalog PRIMARY KEY,
+    Name NVARCHAR(150) NOT NULL,
+    Description NVARCHAR(500) NULL,
+    DefaultPrice BIGINT NOT NULL CONSTRAINT DF_repair_ServiceCatalog_DefaultPrice DEFAULT (0),
+    IsActive BIT NOT NULL CONSTRAINT DF_repair_ServiceCatalog_IsActive DEFAULT (1),
+    CreatedAt DATETIME2(0) NOT NULL CONSTRAINT DF_repair_ServiceCatalog_CreatedAt DEFAULT SYSUTCDATETIME(),
+    UpdatedAt DATETIME2(0) NULL,
+    CONSTRAINT CK_repair_ServiceCatalog_DefaultPrice CHECK (DefaultPrice >= 0)
+  );
+  CREATE INDEX IX_repair_ServiceCatalog_ActiveName ON repair.ServiceCatalog(IsActive, Name);
+END;
+GO
+
 IF OBJECT_ID('repair.RepairServices','U') IS NULL
 CREATE TABLE repair.RepairServices (
     RepairServiceId BIGINT IDENTITY(1,1) NOT NULL,
@@ -317,6 +333,7 @@ CREATE TABLE repair.RepairServices (
     CreatedAt       DATETIME2(3) NOT NULL CONSTRAINT DF_RepairServices_CreatedAt DEFAULT (SYSUTCDATETIME()),
     CONSTRAINT PK_RepairServices PRIMARY KEY CLUSTERED (RepairServiceId),
     CONSTRAINT FK_RepairServices_RepairOrders FOREIGN KEY (RepairOrderId) REFERENCES repair.RepairOrders(RepairOrderId),
+    CONSTRAINT FK_repair_RepairServices_ServiceCatalog FOREIGN KEY (ServiceCatalogId) REFERENCES repair.ServiceCatalog(ServiceCatalogId),
     CONSTRAINT CK_RepairServices_Price CHECK (Price >= 0),
     CONSTRAINT CK_RepairServices_Quantity CHECK (Quantity > 0)
 );
@@ -795,34 +812,9 @@ IF COL_LENGTH(N'repair.RepairOrders', N'FinalCost') IS NULL
   THROW 51006, 'repair.RepairOrders.FinalCost is required.', 1;
 GO
 
-IF OBJECT_ID(N'repair.ServiceCatalog', N'U') IS NULL
-BEGIN
-  CREATE TABLE repair.ServiceCatalog (
-    ServiceCatalogId BIGINT IDENTITY(1,1) NOT NULL CONSTRAINT PK_repair_ServiceCatalog PRIMARY KEY,
-    Name NVARCHAR(150) NOT NULL,
-    Description NVARCHAR(500) NULL,
-    DefaultPrice BIGINT NOT NULL CONSTRAINT DF_repair_ServiceCatalog_DefaultPrice DEFAULT (0),
-    IsActive BIT NOT NULL CONSTRAINT DF_repair_ServiceCatalog_IsActive DEFAULT (1),
-    CreatedAt DATETIME2(0) NOT NULL CONSTRAINT DF_repair_ServiceCatalog_CreatedAt DEFAULT SYSUTCDATETIME(),
-    UpdatedAt DATETIME2(0) NULL,
-    CONSTRAINT CK_repair_ServiceCatalog_DefaultPrice CHECK (DefaultPrice >= 0)
-  );
-  CREATE INDEX IX_repair_ServiceCatalog_ActiveName ON repair.ServiceCatalog(IsActive, Name);
-END;
-GO
+/* ServiceCatalog is created before RepairServices so the FK is part of the initial table definition. */
 
-IF NOT EXISTS (
-  SELECT 1 FROM sys.foreign_keys
-  WHERE name = N'FK_repair_RepairServices_ServiceCatalog'
-    AND parent_object_id = OBJECT_ID(N'repair.RepairServices')
-)
-  ALTER TABLE repair.RepairServices ADD CONSTRAINT FK_repair_RepairServices_ServiceCatalog
-    FOREIGN KEY (ServiceCatalogId) REFERENCES repair.ServiceCatalog(ServiceCatalogId);
-IF NOT EXISTS (
-  SELECT 1 FROM sys.indexes
-  WHERE name = N'IX_repair_RepairServices_ServiceCatalogId'
-    AND object_id = OBJECT_ID(N'repair.RepairServices')
-)
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_repair_RepairServices_ServiceCatalogId' AND object_id = OBJECT_ID(N'repair.RepairServices'))
   CREATE INDEX IX_repair_RepairServices_ServiceCatalogId ON repair.RepairServices(ServiceCatalogId);
 GO
 
