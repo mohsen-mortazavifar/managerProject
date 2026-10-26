@@ -313,6 +313,7 @@ CREATE TABLE repair.RepairServices (
     Price           BIGINT NOT NULL,
     Quantity        INT NOT NULL CONSTRAINT DF_RepairServices_Quantity DEFAULT (1),
     IsCompleted     BIT NOT NULL CONSTRAINT DF_RepairServices_IsCompleted DEFAULT (0),
+    ServiceCatalogId BIGINT NULL,
     CreatedAt       DATETIME2(3) NOT NULL CONSTRAINT DF_RepairServices_CreatedAt DEFAULT (SYSUTCDATETIME()),
     CONSTRAINT PK_RepairServices PRIMARY KEY CLUSTERED (RepairServiceId),
     CONSTRAINT FK_RepairServices_RepairOrders FOREIGN KEY (RepairOrderId) REFERENCES repair.RepairOrders(RepairOrderId),
@@ -420,17 +421,22 @@ CREATE TABLE repair.ServiceReminders (
     ReminderType      NVARCHAR(50) NULL,
     ReminderAt        DATETIME2(0) NOT NULL,
     Status            NVARCHAR(30) NOT NULL CONSTRAINT DF_ServiceReminders_Status DEFAULT ('Pending'),
+    ProcessingAt      DATETIME2(3) NULL,
     SentAt            DATETIME2(0) NULL,
     Message           NVARCHAR(1000) NULL,
     CreatedAt         DATETIME2(3) NOT NULL CONSTRAINT DF_ServiceReminders_CreatedAt DEFAULT (SYSUTCDATETIME()),
     CONSTRAINT PK_ServiceReminders PRIMARY KEY CLUSTERED (ServiceReminderId),
     CONSTRAINT FK_ServiceReminders_RepairOrders FOREIGN KEY (RepairOrderId) REFERENCES repair.RepairOrders(RepairOrderId),
-    CONSTRAINT CK_ServiceReminders_Status CHECK (Status IN ('Pending','Sent','Cancelled','Failed'))
+    CONSTRAINT CK_ServiceReminders_Status CHECK (Status IN ('Pending','Processing','Sent','Cancelled','Failed'))
 );
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ServiceReminders_Status' AND object_id = OBJECT_ID(N'repair.ServiceReminders'))
 BEGIN
     CREATE INDEX IX_ServiceReminders_Status ON repair.ServiceReminders(Status, ReminderAt) WHERE Status = 'Pending';
+END;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ServiceReminders_ProcessingLease' AND object_id = OBJECT_ID(N'repair.ServiceReminders'))
+BEGIN
+    CREATE INDEX IX_ServiceReminders_ProcessingLease ON repair.ServiceReminders(Status, ProcessingAt, ReminderAt) WHERE Status = 'Processing';
 END;
 GO
 
@@ -693,56 +699,9 @@ GO
 
 
 
-/*
-  Reminder worker claiming support.
-  Apply once to the Repair SQL Server database before deploying the updated
-  RepairReminderService. This script is idempotent and does not delete data.
-*/
-SET XACT_ABORT ON;
-BEGIN TRANSACTION;
+/* Reminder worker columns, status constraint and lease index are defined in the initial table schema. */
 
-IF COL_LENGTH('repair.ServiceReminders', 'ProcessingAt') IS NULL
-BEGIN
-  ALTER TABLE repair.ServiceReminders
-    ADD ProcessingAt DATETIME2(3) NULL;
-END;
 
-IF EXISTS (
-  SELECT 1
-  FROM sys.check_constraints
-  WHERE name = 'CK_ServiceReminders_Status'
-    AND parent_object_id = OBJECT_ID('repair.ServiceReminders')
-)
-BEGIN
-  ALTER TABLE repair.ServiceReminders
-    DROP CONSTRAINT CK_ServiceReminders_Status;
-END;
-
-IF NOT EXISTS (
-  SELECT 1
-  FROM sys.check_constraints
-  WHERE name = 'CK_ServiceReminders_Status'
-    AND parent_object_id = OBJECT_ID('repair.ServiceReminders')
-)
-BEGIN
-  ALTER TABLE repair.ServiceReminders
-    ADD CONSTRAINT CK_ServiceReminders_Status
-    CHECK (Status IN ('Pending','Processing','Sent','Cancelled','Failed'));
-END;
-
-IF NOT EXISTS (
-  SELECT 1
-  FROM sys.indexes
-  WHERE name = 'IX_ServiceReminders_ProcessingLease'
-    AND object_id = OBJECT_ID('repair.ServiceReminders')
-)
-BEGIN
-  CREATE INDEX IX_ServiceReminders_ProcessingLease
-    ON repair.ServiceReminders(Status, ProcessingAt, ReminderAt)
-    WHERE Status = 'Processing';
-END;
-
-COMMIT TRANSACTION;
 
 
 
@@ -852,13 +811,19 @@ BEGIN
 END;
 GO
 
-IF COL_LENGTH(N'repair.RepairServices', N'ServiceCatalogId') IS NULL
-BEGIN
-  ALTER TABLE repair.RepairServices ADD ServiceCatalogId BIGINT NULL;
+IF NOT EXISTS (
+  SELECT 1 FROM sys.foreign_keys
+  WHERE name = N'FK_repair_RepairServices_ServiceCatalog'
+    AND parent_object_id = OBJECT_ID(N'repair.RepairServices')
+)
   ALTER TABLE repair.RepairServices ADD CONSTRAINT FK_repair_RepairServices_ServiceCatalog
     FOREIGN KEY (ServiceCatalogId) REFERENCES repair.ServiceCatalog(ServiceCatalogId);
+IF NOT EXISTS (
+  SELECT 1 FROM sys.indexes
+  WHERE name = N'IX_repair_RepairServices_ServiceCatalogId'
+    AND object_id = OBJECT_ID(N'repair.RepairServices')
+)
   CREATE INDEX IX_repair_RepairServices_ServiceCatalogId ON repair.RepairServices(ServiceCatalogId);
-END;
 GO
 
 
@@ -911,9 +876,11 @@ BEGIN
     IsActive BIT NOT NULL CONSTRAINT DF_security_Users_IsActive DEFAULT (1),
     CreatedAt DATETIME2(0) NOT NULL CONSTRAINT DF_security_Users_CreatedAt DEFAULT SYSUTCDATETIME(),
     UpdatedAt DATETIME2(0) NULL,
-    LastLoginAt DATETIME2(0) NULL
+    LastLoginAt DATETIME2(0) NULL,
+    MasterUserId BIGINT NULL
   );
   CREATE UNIQUE INDEX UX_security_Users_UserName ON security.Users(UserName);
+  CREATE UNIQUE INDEX UX_security_Users_MasterUserId ON security.Users(MasterUserId) WHERE MasterUserId IS NOT NULL;
 END;
 GO
 IF OBJECT_ID(N'security.Roles', N'U') IS NULL
@@ -1021,104 +988,9 @@ WHERE p.PermissionKey IN (N'dashboard.view',N'repairs.view',N'repairs.status.cha
 AND NOT EXISTS (SELECT 1 FROM security.RolePermissions rp WHERE rp.RoleId=@ReceptionRoleId AND rp.PermissionId=p.PermissionId);
 GO
 
-/* Create the inventory catalog only if it does not exist. */
-IF OBJECT_ID(N'inventory.Parts', N'U') IS NULL
-BEGIN
-  CREATE TABLE inventory.Parts (
-    PartId BIGINT IDENTITY(1,1) NOT NULL CONSTRAINT PK_inventory_Parts PRIMARY KEY,
-    Name NVARCHAR(150) NOT NULL,
-    Description NVARCHAR(500) NULL,
-    CurrentPrice BIGINT NOT NULL CONSTRAINT DF_inventory_Parts_CurrentPrice DEFAULT (0),
-    IsActive BIT NOT NULL CONSTRAINT DF_inventory_Parts_IsActive DEFAULT (1),
-    CreatedAt DATETIME2(0) NOT NULL CONSTRAINT DF_inventory_Parts_CreatedAt DEFAULT SYSUTCDATETIME(),
-    UpdatedAt DATETIME2(0) NULL,
-    CONSTRAINT CK_inventory_Parts_CurrentPrice CHECK (CurrentPrice >= 0)
-  );
+/* Inventory indexes and initial effective prices for the canonical schema. */
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'inventory.Parts') AND name=N'IX_inventory_Parts_ActiveName')
   CREATE INDEX IX_inventory_Parts_ActiveName ON inventory.Parts(IsActive, Name);
-END;
-GO
-IF COL_LENGTH(N'inventory.Parts', N'Name') IS NULL
-   OR COL_LENGTH(N'inventory.Parts', N'CurrentPrice') IS NULL
-   OR COL_LENGTH(N'inventory.Parts', N'IsActive') IS NULL
-  THROW 51100, 'inventory.Parts has an incompatible schema; expected Name, CurrentPrice, and IsActive.', 1;
-IF COL_LENGTH(N'inventory.Parts', N'Description') IS NULL
-  ALTER TABLE inventory.Parts ADD Description NVARCHAR(500) NULL;
-IF COL_LENGTH(N'inventory.Parts', N'CreatedAt') IS NULL
-  ALTER TABLE inventory.Parts ADD CreatedAt DATETIME2(0) NOT NULL CONSTRAINT DF_inventory_Parts_CreatedAt DEFAULT SYSUTCDATETIME();
-IF COL_LENGTH(N'inventory.Parts', N'UpdatedAt') IS NULL
-  ALTER TABLE inventory.Parts ADD UpdatedAt DATETIME2(0) NULL;
-/* Optional catalog fields: existing parts remain valid with NULL values. */
-IF COL_LENGTH(N'inventory.Parts', N'PartNumber') IS NULL
-  ALTER TABLE inventory.Parts ADD PartNumber NVARCHAR(100) NULL;
-IF COL_LENGTH(N'inventory.Parts', N'Category') IS NULL
-  ALTER TABLE inventory.Parts ADD Category NVARCHAR(150) NULL;
-GO
-IF OBJECT_ID(N'inventory.PartPriceHistory', N'U') IS NULL
-BEGIN
-  CREATE TABLE inventory.PartPriceHistory (
-    PartPriceHistoryId BIGINT IDENTITY(1,1) NOT NULL CONSTRAINT PK_inventory_PartPriceHistory PRIMARY KEY,
-    PartId BIGINT NOT NULL,
-    Price BIGINT NOT NULL,
-    EffectiveFrom DATETIME2(0) NOT NULL CONSTRAINT DF_inventory_PartPriceHistory_EffectiveFrom DEFAULT SYSUTCDATETIME(),
-    EffectiveTo DATETIME2(0) NULL,
-    ChangedByUserId BIGINT NULL,
-    CreatedAt DATETIME2(0) NOT NULL CONSTRAINT DF_inventory_PartPriceHistory_CreatedAt DEFAULT SYSUTCDATETIME(),
-    CONSTRAINT FK_inventory_PartPriceHistory_Parts FOREIGN KEY (PartId) REFERENCES inventory.Parts(PartId),
-    CONSTRAINT FK_inventory_PartPriceHistory_Users FOREIGN KEY (ChangedByUserId) REFERENCES security.Users(UserId),
-    CONSTRAINT CK_inventory_PartPriceHistory_Price CHECK (Price >= 0),
-    CONSTRAINT CK_inventory_PartPriceHistory_EffectivePeriod CHECK (EffectiveTo IS NULL OR EffectiveTo >= EffectiveFrom)
-  );
-END;
-GO
-
-/* Upgrade the earlier draft schema in place without deleting existing price records. */
-IF COL_LENGTH(N'inventory.PartPriceHistory', N'Price') IS NULL
-  ALTER TABLE inventory.PartPriceHistory ADD Price BIGINT NULL;
-IF COL_LENGTH(N'inventory.PartPriceHistory', N'EffectiveFrom') IS NULL
-  ALTER TABLE inventory.PartPriceHistory ADD EffectiveFrom DATETIME2(0) NULL;
-IF COL_LENGTH(N'inventory.PartPriceHistory', N'EffectiveTo') IS NULL
-  ALTER TABLE inventory.PartPriceHistory ADD EffectiveTo DATETIME2(0) NULL;
-IF COL_LENGTH(N'inventory.PartPriceHistory', N'CreatedAt') IS NULL
-  ALTER TABLE inventory.PartPriceHistory ADD CreatedAt DATETIME2(0) NULL;
-GO
-
-/* Convert legacy NewPrice/ChangedAt rows into effective-dated prices where those columns exist. */
-IF COL_LENGTH(N'inventory.PartPriceHistory', N'NewPrice') IS NOT NULL
-  EXEC(N'UPDATE inventory.PartPriceHistory SET Price = COALESCE(Price, NewPrice) WHERE Price IS NULL;');
-IF COL_LENGTH(N'inventory.PartPriceHistory', N'ChangedAt') IS NOT NULL
-  EXEC(N'UPDATE inventory.PartPriceHistory SET EffectiveFrom = COALESCE(EffectiveFrom, ChangedAt) WHERE EffectiveFrom IS NULL;');
-UPDATE h
-SET Price = COALESCE(h.Price, p.CurrentPrice),
-    EffectiveFrom = COALESCE(h.EffectiveFrom, h.CreatedAt, p.CreatedAt, SYSUTCDATETIME()),
-    CreatedAt = COALESCE(h.CreatedAt, h.EffectiveFrom, p.CreatedAt, SYSUTCDATETIME())
-FROM inventory.PartPriceHistory h
-JOIN inventory.Parts p ON p.PartId=h.PartId
-WHERE h.Price IS NULL OR h.EffectiveFrom IS NULL OR h.CreatedAt IS NULL;
-
-IF EXISTS (SELECT 1 FROM inventory.PartPriceHistory WHERE Price IS NULL OR EffectiveFrom IS NULL OR CreatedAt IS NULL)
-  THROW 51101, 'Unable to migrate inventory.PartPriceHistory to effective-dated prices.', 1;
-
-ALTER TABLE inventory.PartPriceHistory ALTER COLUMN Price BIGINT NOT NULL;
-ALTER TABLE inventory.PartPriceHistory ALTER COLUMN EffectiveFrom DATETIME2(0) NOT NULL;
-ALTER TABLE inventory.PartPriceHistory ALTER COLUMN CreatedAt DATETIME2(0) NOT NULL;
-
-IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'inventory.PartPriceHistory') AND name=N'NewPrice' AND is_nullable=0)
-  ALTER TABLE inventory.PartPriceHistory ALTER COLUMN NewPrice BIGINT NULL;
-GO
-
-/* Close each legacy price at the next price's start time, preserving a single open-ended current row. */
-;WITH OrderedPrices AS (
-  SELECT PartPriceHistoryId, EffectiveFrom,
-         LEAD(EffectiveFrom) OVER (PARTITION BY PartId ORDER BY EffectiveFrom, PartPriceHistoryId) AS NextEffectiveFrom
-  FROM inventory.PartPriceHistory
-)
-UPDATE h
-SET EffectiveTo = o.NextEffectiveFrom
-FROM inventory.PartPriceHistory h
-JOIN OrderedPrices o ON o.PartPriceHistoryId=h.PartPriceHistoryId
-WHERE o.NextEffectiveFrom IS NOT NULL
-  AND (h.EffectiveTo IS NULL OR h.EffectiveTo > o.NextEffectiveFrom);
-
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'inventory.PartPriceHistory') AND name=N'IX_inventory_PartPriceHistory_PartEffective')
   CREATE INDEX IX_inventory_PartPriceHistory_PartEffective ON inventory.PartPriceHistory(PartId, EffectiveFrom DESC, PartPriceHistoryId DESC);
 GO
@@ -1130,30 +1002,4 @@ FROM inventory.Parts p
 WHERE NOT EXISTS (
   SELECT 1 FROM inventory.PartPriceHistory h WHERE h.PartId=p.PartId AND h.EffectiveTo IS NULL
 );
-GO
-
-
-
-
-
-/*
-  Link tenant-local Repair permission accounts to the canonical Master identity.
-  Apply separately to each business database before enabling Master-backed authorization.
-  Existing users and passwords are preserved; no automatic username-based linking is performed.
-*/
-SET XACT_ABORT ON;
-GO
-
-IF COL_LENGTH(N'security.Users', N'MasterUserId') IS NULL
-  ALTER TABLE security.Users ADD MasterUserId BIGINT NULL;
-GO
-
-IF NOT EXISTS (
-  SELECT 1 FROM sys.indexes
-  WHERE object_id = OBJECT_ID(N'security.Users')
-    AND name = N'UX_security_Users_MasterUserId'
-)
-  CREATE UNIQUE INDEX UX_security_Users_MasterUserId
-    ON security.Users(MasterUserId)
-    WHERE MasterUserId IS NOT NULL;
 GO
