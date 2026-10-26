@@ -15,12 +15,15 @@ export async function POST(request: Request) {
   try { body = await request.json(); } catch { return respond({ error: "درخواست نامعتبر است." }, 400); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return respond({ error: "درخواست نامعتبر است." }, 400);
 
-  const input = body as { challengeId?: unknown; mobile?: unknown; code?: unknown };
+  const input = body as { challengeId?: unknown; mobile?: unknown; userName?: unknown; code?: unknown };
   if (typeof input.challengeId !== "string" ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.challengeId) ||
-    typeof input.mobile !== "string" || typeof input.code !== "string" || !/^\d{6}$/.test(input.code)) {
+    typeof input.mobile !== "string" || typeof input.userName !== "string" || typeof input.code !== "string" || !/^\d{6}$/.test(input.code)) {
     return respond({ error: "کد یا اطلاعات درخواست معتبر نیست." }, 400);
   }
+
+  const userName = input.userName.trim().toLowerCase();
+  if (!/^[a-z0-9._-]{3,100}$/.test(userName)) return respond({ error: "نام کاربری معتبر نیست." }, 400);
 
   let mobile: string;
   try { mobile = normalizeMobile(input.mobile); } catch { return respond({ error: "کد یا اطلاعات درخواست معتبر نیست." }, 400); }
@@ -36,13 +39,13 @@ export async function POST(request: Request) {
         .input("challengeId", sql.UniqueIdentifier, input.challengeId)
         .input("mobile", sql.NVarChar(40), mobile)
         .query(`
-          SELECT TOP (1) ChallengeId, Mobile, Purpose, FullName, BusinessName, OtpHash,
+          SELECT TOP (1) ChallengeId, Mobile, Purpose, FullName, BusinessName, UserName, BusinessAddress, BusinessPhone, OtpHash,
                  ExpiresAt, Attempts, MaxAttempts, ConsumedAt
           FROM dbo.OwnerOtpChallenges WITH (UPDLOCK, ROWLOCK)
           WHERE ChallengeId = @challengeId AND Mobile = @mobile;
         `);
       const challenge = found.recordset[0];
-      if (!challenge || challenge.ConsumedAt || new Date(challenge.ExpiresAt).getTime() <= Date.now() ||
+      if (!challenge || String(challenge.UserName || "").toLowerCase() !== userName || challenge.ConsumedAt || new Date(challenge.ExpiresAt).getTime() <= Date.now() ||
         Number(challenge.Attempts) >= Number(challenge.MaxAttempts)) {
         await tx.rollback();
         return respond({ error: "کد معتبر نیست یا منقضی شده است." }, 400);
@@ -65,11 +68,14 @@ export async function POST(request: Request) {
       if (challenge.Purpose === "register") {
         const fullName = String(challenge.FullName || "").trim();
         const businessName = String(challenge.BusinessName || "").trim();
-        if (!fullName || !businessName) throw new Error("OTP_REGISTRATION_DATA_MISSING");
+        const businessAddress = String(challenge.BusinessAddress || "").trim();
+        const businessPhone = String(challenge.BusinessPhone || "").trim();
+        if (!fullName || !businessName || !businessAddress || !businessPhone || !userName) throw new Error("OTP_REGISTRATION_DATA_MISSING");
 
         const exists = await new sql.Request(tx)
           .input("mobile", sql.NVarChar(40), mobile)
-          .query("SELECT TOP (1) UserId FROM dbo.Users WHERE Mobile = @mobile AND DeletedAt IS NULL;");
+          .input("userName", sql.NVarChar(100), userName)
+          .query("SELECT TOP (1) UserId FROM dbo.Users WHERE (Mobile = @mobile OR LOWER(UserName) = @userName) AND DeletedAt IS NULL;");
         if (exists.recordset[0]) {
           await tx.commit();
           return respond({ error: "این شماره قبلاً ثبت شده است؛ لطفاً وارد شوید." }, 409);
@@ -78,11 +84,12 @@ export async function POST(request: Request) {
         const userResult = await new sql.Request(tx)
           .input("mobile", sql.NVarChar(40), mobile)
           .input("fullName", sql.NVarChar(200), fullName)
+          .input("userName", sql.NVarChar(100), userName)
           .query(`
             INSERT INTO dbo.Users
-              (Email, Mobile, PasswordHash, FullName, IsActive, IsSystemAdmin, IsPlatformUser, MobileVerifiedAt, CreatedAt, UpdatedAt)
+              (Email, Mobile, UserName, PasswordHash, FullName, IsActive, IsSystemAdmin, IsPlatformUser, MobileVerifiedAt, CreatedAt, UpdatedAt)
             OUTPUT INSERTED.UserId
-            VALUES (NULL, @mobile, NULL, @fullName, 1, 0, 0, SYSUTCDATETIME(), SYSUTCDATETIME(), SYSUTCDATETIME());
+            VALUES (NULL, @mobile, @userName, NULL, @fullName, 1, 0, 0, SYSUTCDATETIME(), SYSUTCDATETIME(), SYSUTCDATETIME());
           `);
         const userId = userResult.recordset[0]?.UserId;
         if (!userId) throw new Error("USER_INSERT_FAILED");
@@ -93,12 +100,14 @@ export async function POST(request: Request) {
           .input("name", sql.NVarChar(200), businessName)
           .input("code", sql.NVarChar(50), tenantCode)
           .input("mobile", sql.NVarChar(40), mobile)
+          .input("businessAddress", sql.NVarChar(500), businessAddress)
+          .input("businessPhone", sql.NVarChar(30), businessPhone)
           .query(`
             DECLARE @InsertedTenants TABLE (TenantId BIGINT);
             INSERT INTO dbo.Tenants
-              (Name, Code, Status, ContactEmail, ContactMobile, CreatedAt, UpdatedAt)
+              (Name, Code, Status, ContactEmail, ContactMobile, BusinessAddress, ContactPhone, CreatedAt, UpdatedAt)
             OUTPUT INSERTED.TenantId INTO @InsertedTenants (TenantId)
-            VALUES (@name, @code, N'Pending', NULL, @mobile, SYSUTCDATETIME(), SYSUTCDATETIME());
+            VALUES (@name, @code, N'Pending', NULL, @mobile, @businessAddress, @businessPhone, SYSUTCDATETIME(), SYSUTCDATETIME());
             SELECT TenantId FROM @InsertedTenants;
           `);
         const tenantId = tenantResult.recordset[0]?.TenantId;
@@ -176,13 +185,14 @@ export async function POST(request: Request) {
       if (challenge.Purpose === "login") {
         const account = await new sql.Request(tx)
           .input("mobile", sql.NVarChar(40), mobile)
+          .input("userName", sql.NVarChar(100), userName)
           .query(`
             SELECT TOP (1) u.UserId, u.Email, u.FullName, u.IsActive, u.IsSystemAdmin, u.IsPlatformUser,
               CASE WHEN EXISTS (
                 SELECT 1 FROM dbo.TenantUsers tu
                 WHERE tu.UserId = u.UserId AND tu.IsOwner = 1 AND tu.IsActive = 1
               ) THEN 1 ELSE 0 END AS IsBusinessOwner
-            FROM dbo.Users u WHERE u.Mobile = @mobile AND u.DeletedAt IS NULL;
+            FROM dbo.Users u WHERE u.Mobile = @mobile AND LOWER(u.UserName) = @userName AND u.DeletedAt IS NULL;
           `);
         const userRow = account.recordset[0];
         if (!userRow || !Boolean(userRow.IsActive) || Boolean(userRow.IsSystemAdmin) ||
