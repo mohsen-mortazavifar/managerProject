@@ -142,7 +142,7 @@ export async function POST(request: Request) {
       const userResult = await new sql.Request(tx)
         .input("mobile", sql.NVarChar(40), mobile)
         .query(`
-          SELECT TOP (1) UserId, IsActive, MobileVerifiedAt
+          SELECT TOP (1) UserId, IsActive, MobileVerifiedAt, PasswordHash, Mobile, FullName
           FROM dbo.Users
           WHERE Mobile = @mobile AND DeletedAt IS NULL;
         `);
