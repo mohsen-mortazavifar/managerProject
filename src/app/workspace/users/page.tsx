@@ -14,15 +14,18 @@ type ResponseData = { error?: string; message?: string; members?: Member[]; role
 
 const roleLabels: Record<string, string> = {
   TenantOwner: "مالک کسب‌وکار",
-  TenantManager: "مدیر تعمیرگاه",
+  TenantManager: "مدیر کسب‌وکار",
   TenantUser: "کاربر عادی",
+  Administrator: "مدیر کسب‌وکار",
+  Technician: "تعمیرکار",
+  Reception: "پذیرش",
 };
 
 export default function WorkspaceUsersPage() {
   const router = useRouter();
   const [members, setMembers] = useState<Member[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [roleName, setRoleName] = useState("TenantUser");
+  const [roleId, setRoleId] = useState("");
   const [loading, setLoading] = useState(true);
   const [changingId, setChangingId] = useState("");
   const [error, setError] = useState("");
@@ -50,6 +53,7 @@ export default function WorkspaceUsersPage() {
       if (!response.ok) throw new Error(result.error || "دریافت فهرست اعضا انجام نشد.");
       setMembers(result.members || []);
       setRoles(result.roles || []);
+      setRoleId((current) => current || result.roles?.[0]?.roleId || "");
       const inviteResponse = await fetch("/api/workspace/invitations", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
       const inviteResult = await inviteResponse.json() as ResponseData;
       if (inviteResponse.ok) setInvitations(inviteResult.invitations || []);
@@ -72,7 +76,7 @@ export default function WorkspaceUsersPage() {
       const response = await fetch("/api/workspace/invitations", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ roleName }),
+        body: JSON.stringify({ roleId }),
       });
       const result = await response.json() as ResponseData;
       if (!response.ok || !result.inviteUrl) throw new Error(result.error || "ایجاد دعوت‌نامه انجام نشد.");
@@ -176,7 +180,7 @@ export default function WorkspaceUsersPage() {
           <div className="users-panel-heading"><span><Plus size={19} /></span><div><h2>دعوت عضو جدید</h2><p>یک لینک اختصاصی بسازید و برای فرد ارسال کنید. عضویت فقط پس از تأیید پیامک فعال می‌شود.</p></div></div>
           <div className="users-add-form">
             <label>نقش کاربر
-              <select value={roleName} onChange={(e) => setRoleName(e.target.value)}>
+              <select value={roleId} onChange={(e) => setRoleId(e.target.value)}>
                 {roles.map((role) => <option key={role.roleId} value={role.name}>{roleLabels[role.name] || role.name}</option>)}
               </select>
             </label>
