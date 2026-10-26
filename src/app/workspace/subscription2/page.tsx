@@ -16,7 +16,7 @@ export default function SubscriptionPage() {
             const headers = { Authorization: `Bearer ${token}` };
             const [p, o] = await Promise.all([fetch("/api/available-plans", { headers, cache: "no-store" }), fetch("/api/subscription-orders", { headers, cache: "no-store" })]);
             const pr = await p.json(), or = await o.json();
-            if ([p.status, o.status].some(s => s === 401 || s === 403)) { if (p.status === 401 || o.status === 401) { sessionStorage.removeItem("repairMasterAccessToken"); router.replace("/login"); return; } setError(pr.error || or.error || "دسترسی مالک کسب‌وکار لازم است."); return; }
+            if ([p.status, o.status].some(s => s === 401 || s === 403)) { if (p.status === 401 || o.status === 401) { sessionStorage.removeItem("repairMasterAccessToken"); router.replace("/owner-login"); return; } setError(pr.error || or.error || "دسترسی مالک کسب‌وکار لازم است."); return; }
             if (!p.ok || !o.ok) { setError(pr.error || or.error || "دریافت اطلاعات اشتراک انجام نشد."); return; }
             setPlans(pr.plans); setOrders(or.orders); setTenant(or.tenant);
         } catch { setError("ارتباط با سرور برقرار نشد."); } finally { setLoading(false); }
