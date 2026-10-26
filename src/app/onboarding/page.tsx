@@ -37,6 +37,7 @@ export default function OnboardingPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [planActive, setPlanActive] = useState(false);
+  const [planReserved, setPlanReserved] = useState(false);
 
   const refresh = useCallback(async (quiet = false) => {
     const token = sessionStorage.getItem("repairMasterAccessToken");
@@ -82,16 +83,21 @@ export default function OnboardingPage() {
           cache: "no-store",
         });
         if (subscriptionResponse.ok) {
-          const subscriptionData = await subscriptionResponse.json() as { orders?: Array<{ status: string; endsAt: string }> };
+          const subscriptionData = await subscriptionResponse.json() as { orders?: Array<{ status: string; startsAt: string; endsAt: string }> };
+          const now = Date.now();
           const hasActivePlan = (subscriptionData.orders || []).some((order) =>
-            order.status === "Active" && new Date(order.endsAt).getTime() > Date.now()
+            order.status === "Active" && new Date(order.startsAt).getTime() <= now && new Date(order.endsAt).getTime() > now
           );
+          const hasReservedPlan = (subscriptionData.orders || []).some((order) => order.status === "Reserved");
           setPlanActive(hasActivePlan);
+          setPlanReserved(hasReservedPlan);
         } else {
           setPlanActive(false);
+          setPlanReserved(false);
         }
       } else {
         setPlanActive(false);
+        setPlanReserved(false);
       }
     } catch {
       setError("ارتباط با سرور برقرار نشد. دوباره تلاش کنید.");
@@ -130,20 +136,23 @@ export default function OnboardingPage() {
   const failed = tenantStatus === "Failed" || jobStatus === "Failed";
   const databaseReady = tenantStatus === "Active" && Boolean(data?.database?.ready);
   const active = databaseReady && planActive;
-  const waitingForPlan = databaseReady && !planActive && !failed;
+  const waitingForPlan = databaseReady && !planActive && !planReserved && !failed;
+  const reservedPlanWaiting = databaseReady && !planActive && planReserved && !failed;
 
   return (
     <main className="auth-page" dir="rtl">
       <section className="auth-card onboarding-card">
         <div className="auth-brand"><span>RM</span><div><strong>Repair Master</strong><small>راه‌اندازی فضای کسب‌وکار</small></div></div>
         <div className="auth-icon">{active ? <CheckCircle2 size={23} /> : failed ? <CircleAlert size={23} /> : <Building2 size={23} />}</div>
-        <h1>{loading ? "در حال دریافت وضعیت..." : active ? "فضای کسب‌وکار فعال است" : waitingForPlan ? "فضای شما آماده است؛ پلن را فعال کنید" : failed ? "آماده‌سازی کامل نشد" : "در حال آماده‌سازی فضای شما"}</h1>
+        <h1>{loading ? "در حال دریافت وضعیت..." : active ? "فضای کسب‌وکار فعال است" : reservedPlanWaiting ? "پلن شما رزرو شده است" : waitingForPlan ? "فضای شما آماده است؛ پلن را فعال کنید" : failed ? "آماده‌سازی کامل نشد" : "در حال آماده‌سازی فضای شما"}</h1>
         <p className="auth-description">
           {active
             ? "دیتابیس و ساختار اولیه آماده است و اشتراک فعال شما امکان ورود به پنل را فراهم می‌کند."
-            : waitingForPlan
-              ? "برای جلوگیری از سردرگمی، ورود به پنل اصلی پس از فعال شدن اشتراک نمایش داده می‌شود. پلن آزمایشی را درخواست کنید یا یک پلن انتخاب و سفارش را تکمیل کنید."
-              : failed
+            : reservedPlanWaiting
+              ? "برای این کسب‌وکار پلن رزروشده وجود دارد؛ لازم نیست پلن جدیدی سفارش دهید. وضعیت و زمان شروع پلن را در بخش پلن‌ها و سفارش‌های من بررسی کنید. دسترسی به پنل پس از فعال شدن اشتراک برقرار می‌شود."
+              : waitingForPlan
+                ? "برای جلوگیری از سردرگمی، ورود به پنل اصلی پس از فعال شدن اشتراک نمایش داده می‌شود. پلن آزمایشی را درخواست کنید یا یک پلن انتخاب و سفارش را تکمیل کنید."
+                : failed
                 ? "فرایند خودکار پس از چند تلاش ناموفق متوقف شده است. شناسه پیگیری را برای پشتیبانی نگه دارید."
                 : "در حال ایجاد دیتابیس اختصاصی و نصب ساختار اولیه هستیم. این صفحه هر ۵ ثانیه وضعیت را بررسی می‌کند."}
         </p>
@@ -165,6 +174,7 @@ export default function OnboardingPage() {
 
         <div className="onboarding-actions">
           {waitingForPlan && <button className="auth-submit" type="button" onClick={() => router.push("/workspace/subscription2")}><ShieldCheck size={17} /> انتخاب و فعال‌سازی پلن</button>}
+          {reservedPlanWaiting && <button className="auth-submit" type="button" onClick={() => router.push("/workspace/subscription2")}><ShieldCheck size={17} /> مشاهده پلن رزروشده</button>}
           {active && <button className="auth-submit" type="button" onClick={() => router.push("/workspace")}><CheckCircle2 size={17} /> ورود به پنل کسب‌وکار</button>}
           <button className="auth-submit" type="button" disabled={refreshing} onClick={() => void refresh()}>
             {refreshing ? <LoaderCircle size={17} className="animate-spin" /> : <RefreshCw size={17} />}
