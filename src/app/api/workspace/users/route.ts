@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSqlPool, sql } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/guard";
 import { normalizeMobile } from "@/lib/auth/otp";
-import { getTenantSecurityRoles, syncTenantSecurityUser } from "@/lib/tenant-security";
+import { getTenantSecurityRoles, setTenantSecurityUserRole, syncTenantSecurityUser } from "@/lib/tenant-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -241,13 +241,13 @@ export async function PATCH(request: Request) {
   let body: unknown;
   try { body = await request.json(); } catch { return json({ error: "درخواست نامعتبر است." }, 400); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "درخواست نامعتبر است." }, 400);
-  const input = body as { tenantUserId?: unknown; isActive?: unknown; roleName?: unknown };
+  const input = body as { tenantUserId?: unknown; isActive?: unknown; roleId?: unknown };
   if (typeof input.tenantUserId !== "string" || !/^\d+$/.test(input.tenantUserId)) return json({ error: "شناسه عضویت معتبر نیست." }, 400);
   const hasActiveChange = typeof input.isActive === "boolean";
-  const hasRoleChange = typeof input.roleName === "string";
+  const hasRoleChange = (typeof input.roleId === "string" || typeof input.roleId === "number") && /^\\d+$/.test(String(input.roleId));
   if ((!hasActiveChange && !hasRoleChange) ||
       (input.isActive !== undefined && typeof input.isActive !== "boolean") ||
-      (input.roleName !== undefined && (typeof input.roleName !== "string" || !["TenantManager", "TenantUser"].includes(input.roleName)))) {
+      (input.roleId !== undefined && !hasRoleChange)) {
     return json({ error: "وضعیت یا نقش انتخاب‌شده معتبر نیست." }, 400);
   }
   try {
@@ -273,11 +273,25 @@ export async function PATCH(request: Request) {
                   WHERE TenantId = @tenantId AND TenantUserId = @tenantUserId AND IsOwner = 0;`);
       }
       if (hasRoleChange) {
-        const roleResult = await new sql.Request(tx).input("roleName", sql.NVarChar(200), input.roleName)
+        const tenantRoles = await getTenantSecurityRoles(tenant.TenantId);
+        const selectedRole = tenantRoles.find((role) => role.roleId === String(input.roleId));
+        if (!selectedRole) throw new Error("ROLE_NOT_FOUND");
+
+        // Update the tenant-local identity first; don't commit a master role change if tenant sync fails.
+        const masterRoleName = selectedRole.name === "Administrator" ? "TenantManager" : "TenantUser";
+        const masterRoleResult = await new sql.Request(tx).input("roleName", sql.NVarChar(200), masterRoleName)
           .query("SELECT TOP (1) RoleId FROM dbo.Roles WHERE Name = @roleName AND IsSystemRole = 1;");
-        const roleId = roleResult.recordset[0]?.RoleId;
-        if (!roleId) throw new Error("ROLE_NOT_FOUND");
-        await new sql.Request(tx).input("tenantUserId", sql.BigInt, input.tenantUserId).input("roleId", sql.BigInt, roleId)
+        const masterRoleId = masterRoleResult.recordset[0]?.RoleId;
+        if (!masterRoleId) throw new Error("MASTER_ROLE_NOT_FOUND");
+
+        const identityResult = await new sql.Request(tx)
+          .input("tenantUserId", sql.BigInt, input.tenantUserId)
+          .query("SELECT UserId FROM dbo.TenantUsers WHERE TenantUserId = @tenantUserId;");
+        const memberUserId = identityResult.recordset[0]?.UserId;
+        if (!memberUserId) throw new Error("MEMBER_NOT_FOUND");
+
+        await setTenantSecurityUserRole(tenant.TenantId, memberUserId, selectedRole.roleId);
+        await new sql.Request(tx).input("tenantUserId", sql.BigInt, input.tenantUserId).input("roleId", sql.BigInt, masterRoleId)
           .query(`DELETE FROM dbo.UserRoles WHERE TenantUserId = @tenantUserId;
                   INSERT INTO dbo.UserRoles (TenantUserId, RoleId, AssignedAt)
                   VALUES (@tenantUserId, @roleId, SYSUTCDATETIME());`);
