@@ -25,46 +25,8 @@ export async function GET(request:Request){
  try{
   const pool=await getSqlPool(),tenant=await getOwnerTenant(auth.user.userId);
   if(!tenant)return fail("برای این حساب، کسب‌وکار مالکیت‌شده‌ای پیدا نشد.",403);
-  // Reconcile subscription dates before returning them: expired active plans must not
-  // block a paid reservation whose scheduled start has already arrived.
-  await pool.request().input("tenantId",sql.BigInt,tenant.TenantId).query(`
-   SET XACT_ABORT ON;
-   BEGIN TRANSACTION;
-   DECLARE @Now DATETIME2(3)=SYSUTCDATETIME();
-   UPDATE dbo.Subscriptions
-   SET Status=N'Expired',UpdatedAt=@Now
-   WHERE TenantId=@tenantId AND Status=N'Active' AND EndsAt<=@Now;
-
-   UPDATE s
-   SET Status=N'Expired',UpdatedAt=@Now
-   FROM dbo.Subscriptions s
-   WHERE s.TenantId=@tenantId AND s.Status=N'Reserved' AND s.EndsAt<=@Now;
-
-   IF NOT EXISTS (
-     SELECT 1 FROM dbo.Subscriptions
-     WHERE TenantId=@tenantId AND Status=N'Active' AND StartsAt<=@Now AND EndsAt>@Now
-   )
-   BEGIN
-     ;WITH NextReservation AS (
-       SELECT TOP (1) s.SubscriptionId
-       FROM dbo.Subscriptions s WITH (UPDLOCK,HOLDLOCK)
-       INNER JOIN dbo.SubscriptionPlans p ON p.SubscriptionPlanId=s.SubscriptionPlanId
-       WHERE s.TenantId=@tenantId AND s.Status=N'Reserved'
-         AND s.StartsAt<=@Now AND s.EndsAt>@Now
-         AND (
-           EXISTS (SELECT 1 FROM dbo.PaymentTransactions pt
-                   WHERE pt.SubscriptionId=s.SubscriptionId AND pt.Status=N'Paid')
-           OR (s.PriceAtSubscription=0 AND p.IsTrial=1)
-         )
-       ORDER BY s.StartsAt,s.CreatedAt,s.SubscriptionId
-     )
-     UPDATE s
-     SET Status=N'Active',UpdatedAt=@Now
-     FROM dbo.Subscriptions s
-     INNER JOIN NextReservation n ON n.SubscriptionId=s.SubscriptionId;
-   END;
-   COMMIT TRANSACTION;
-  `);
+  // Subscription state transitions are handled by scripts/subscription-worker.mjs.
+  // This endpoint only reads the current state.
 
   const r=await pool.request().input("tenantId",sql.BigInt,tenant.TenantId).query(`
    SELECT s.SubscriptionId,s.Status,s.StartsAt,s.EndsAt,s.PriceAtSubscription,s.CreatedAt,
