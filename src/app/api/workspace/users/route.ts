@@ -205,7 +205,7 @@ export async function POST(request: Request) {
         tenantId: tenant.TenantId,
         masterUserId: user.UserId,
         userName: String(user.Mobile || mobile),
-        displayName: String(user.FullName || user.Mobile || mobile),
+        displayName: String(user.FullName || user.Mobile || mobile).slice(0, 150),
         passwordHash: String(user.PasswordHash || ""),
         roleId: selectedRole.roleId,
         isActive: true,
