@@ -66,9 +66,9 @@ export default function WorkspacePage() {
         setError("وضعیت اشتراک بررسی نشد. دوباره تلاش کنید.");
         return;
       }
-      const subscriptionData = await subscriptionResponse.json() as { orders?: Array<{ status: string; endsAt: string }> };
+      const subscriptionData = await subscriptionResponse.json() as { orders?: Array<{ status: string; startsAt: string; endsAt: string }> };
       const hasActivePlan = (subscriptionData.orders || []).some((order) =>
-        order.status === "Active" && new Date(order.endsAt).getTime() > Date.now()
+        order.status === "Active" && new Date(order.startsAt).getTime() <= Date.now() && new Date(order.endsAt).getTime() > Date.now()
       );
       if (!hasActivePlan) {
         router.replace("/workspace/subscription2");
