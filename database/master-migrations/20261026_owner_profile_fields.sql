@@ -10,6 +10,13 @@ GO
 IF COL_LENGTH(N'dbo.Users', N'UserName') IS NULL
   ALTER TABLE dbo.Users ADD UserName NVARCHAR(100) NULL;
 GO
+/* Existing accounts can continue using their normalized mobile as username. */
+UPDATE u
+SET UserName = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(u.Mobile, N'+', N''), N' ', N''), N'-', N''), N'(', N''), N')', N'')
+FROM dbo.Users u
+WHERE u.UserName IS NULL AND u.Mobile IS NOT NULL;
+GO
+
 IF NOT EXISTS (
   SELECT 1 FROM sys.indexes
   WHERE object_id = OBJECT_ID(N'dbo.Users') AND name = N'UX_Users_UserName'
