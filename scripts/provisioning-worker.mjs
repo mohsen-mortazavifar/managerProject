@@ -289,30 +289,8 @@ async function applyInitialMigration(name, serverName, script, checksum) {
     `);
     if (existing.recordset[0]?.Version === "V1_InitialSchema") return;
 
-    const batches = splitBatches(script);
-    for (let index = 0; index < batches.length; index++) {
-      const batch = batches[index];
-      try {
-        await tenantPool.request().batch(batch);
-      } catch (error) {
-        const sqlError = error && typeof error === "object"
-          ? error
-          : { message: String(error) };
-        const message = String(sqlError.message || "Unknown SQL Server error").slice(0, 1200);
-        const number = sqlError.number == null ? "unknown" : String(sqlError.number);
-        const line = sqlError.lineNumber == null ? "unknown" : String(sqlError.lineNumber);
-        const preview = batch
-          .split(/\\r?\\n/)
-          .map((lineText) => lineText.trim())
-          .filter((lineText) => lineText && !lineText.startsWith("--") && !lineText.startsWith("/*") && !lineText.startsWith("*"))
-          .slice(0, 3)
-          .join(" ")
-          .slice(0, 300);
-        throw new Error(
-          `INITIAL_MIGRATION_BATCH_FAILED index=${index + 1}/${batches.length} sqlNumber=${number} line=${line} message=${message} statement=${preview}`,
-          { cause: error },
-        );
-      }
+    for (const batch of splitBatches(script)) {
+      await tenantPool.request().batch(batch);
     }
 
     const verify = await tenantPool.request()
