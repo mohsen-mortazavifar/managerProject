@@ -365,3 +365,5 @@ a { color: inherit; text-decoration: none; }
 .auth-form textarea { width: 100%; min-height: 76px; resize: vertical; margin: 2px 0 8px; padding: 10px 12px; border: 1px solid #e1e6ef; border-radius: 9px; outline: none; background: #fcfdff; color: #26334a; font: inherit; font-size: 12px; }
 .auth-form textarea:focus { border-color: #7188ee; box-shadow: 0 0 0 3px #526ee719; }
 @media (max-width: 560px) { .users-role-select { width: 100%; min-width: 130px; } }
+
+.users-invite-link .users-primary, .users-invite-link .users-toggle { min-height: 32px; padding: 0 10px; font-size: 11px; }
