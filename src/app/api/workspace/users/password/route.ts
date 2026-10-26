@@ -83,7 +83,7 @@ export async function POST(request: Request) {
         tenantId: tenant.TenantId,
         masterUserId: member.UserId,
         userName: String(member.Mobile || member.UserId),
-        displayName: String(member.FullName || member.Mobile || member.UserId),
+        displayName: String(member.FullName || member.Mobile || member.UserId).slice(0, 150),
         passwordHash,
         roleId: tenantRoleId,
         isActive: true,
