@@ -12,6 +12,7 @@ type PasswordLoginResult = { accessToken?: string; error?: string; user?: { isPl
 export default function OwnerLoginPage() {
   const router = useRouter();
   const [mobile, setMobile] = useState("");
+  const [userName, setUserName] = useState("");
   const [mode, setMode] = useState<"otp" | "password" | "ownerPassword">("otp");
   const [password, setPassword] = useState("");
   const [challengeId, setChallengeId] = useState("");
@@ -25,7 +26,7 @@ export default function OwnerLoginPage() {
     try {
       const response = await fetch("/api/auth/owner-otp/request", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ purpose: "login", mobile }),
+        body: JSON.stringify({ purpose: "login", mobile, userName }),
       });
       const result = await response.json() as RequestResult;
       if (!response.ok || !result.challengeId) {  setError(result.error ||   "کد ارسال نشد. چند دقیقه دیگر مجدد تلاش نمائید."); return; }
@@ -40,7 +41,7 @@ export default function OwnerLoginPage() {
     try {
       const response = await fetch("/api/auth/workspace-password/login", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mobile, password }),
+        body: JSON.stringify({ mobile, userName, password }),
       });
       const result = await response.json() as PasswordLoginResult;
       if (!response.ok || !result.accessToken) { setError(result.error || "شماره موبایل یا رمز عبور صحیح نیست."); return; }
@@ -70,7 +71,7 @@ export default function OwnerLoginPage() {
     try {
       const response = await fetch("/api/auth/owner-otp/verify", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ challengeId, mobile, code }),
+        body: JSON.stringify({ challengeId, mobile, userName, code }),
       });
       const result = await response.json() as VerifyResult;
       if (!response.ok || !result.accessToken) { setError(result.error || "کد معتبر نیست یا منقضی شده است."); return; }
@@ -87,19 +88,23 @@ export default function OwnerLoginPage() {
         <div className="auth-brand"><span>RM</span><div><strong>Repair Master</strong><small>ورود به فضای کسب‌وکار</small></div></div>
         <div className="auth-icon"><Phone size={23} /></div>
         <h1>ورود مالک با موبایل</h1>
-        <p className="auth-description">شماره موبایل تأییدشده را وارد کنید تا کد یک‌بارمصرف دریافت کنید.</p>
+        <p className="auth-description">برای ورود مالک، نام کاربری و شماره موبایل ثبت‌شده را وارد کنید. سپس می‌توانید کد ورود را پیامک کنید.</p>
         {mode === "ownerPassword" ? (
           <form className="auth-form" onSubmit={loginWithOwnerPassword}>
+            <label htmlFor="owner-userName">نام کاربری</label>
+            <input id="owner-userName" autoComplete="username" required maxLength={100} value={userName} onChange={e => setUserName(e.target.value.toLowerCase())} placeholder="مثلاً mohsen123" dir="ltr" />
             <label htmlFor="owner-mobile-password"><Phone size={15} /> شماره موبایل مالک</label>
             <input id="owner-mobile-password" type="tel" autoComplete="tel" required maxLength={20} value={mobile} onChange={e => setMobile(e.target.value)} placeholder="09121234567" dir="ltr" />
             <label htmlFor="owner-backup-password"><KeyRound size={15} /> رمز پشتیبان مالک</label>
             <input id="owner-backup-password" type="password" autoComplete="current-password" required maxLength={1024} value={password} onChange={e => setPassword(e.target.value)} />
             {error && <p className="auth-error" role="alert">{error}</p>}
-            <button className="auth-submit" disabled={busy || !mobile.trim() || !password} type="submit">{busy ? "در حال ورود..." : "ورود مالک با رمز پشتیبان"}</button>
+            <button className="auth-submit" disabled={busy || !mobile.trim() || !userName.trim() || !password} type="submit">{busy ? "در حال ورود..." : "ورود مالک با رمز پشتیبان"}</button>
             <button className="auth-secondary" type="button" onClick={() => { setMode("otp"); setPassword(""); setError(""); setNotice(""); }}>بازگشت به ورود پیامکی</button>
           </form>
         ) : mode === "password" ? (
           <form className="auth-form" onSubmit={loginWithPassword}>
+            <label htmlFor="member-userName">نام کاربری</label>
+            <input id="member-userName" autoComplete="username" required maxLength={100} value={userName} onChange={e => setUserName(e.target.value.toLowerCase())} dir="ltr" />
             <label htmlFor="mobile-password"><Phone size={15} /> شماره موبایل</label>
             <input id="mobile-password" type="tel" autoComplete="tel" required maxLength={20} value={mobile} onChange={e => setMobile(e.target.value)} placeholder="09121234567" dir="ltr" />
             <label htmlFor="member-password"><KeyRound size={15} /> رمز عبور</label>
@@ -110,11 +115,13 @@ export default function OwnerLoginPage() {
           </form>
         ) : !challengeId ? (
           <form className="auth-form" onSubmit={requestCode}>
+            <label htmlFor="userName">نام کاربری</label>
+            <input id="userName" autoComplete="username" required maxLength={100} value={userName} onChange={e => setUserName(e.target.value.toLowerCase())} placeholder="نام کاربری ثبت‌شده" dir="ltr" />
             <label htmlFor="mobile"><Phone size={15} /> شماره موبایل</label>
             <input id="mobile" type="tel" autoComplete="tel" required maxLength={20} value={mobile} onChange={e => setMobile(e.target.value)} placeholder="09121234567" dir="ltr" />
             {notice && <p className="auth-success" role="status">{notice}</p>}
             {error && <p className="auth-error" role="alert">{error}</p>}
-            <button className="auth-submit" disabled={busy} type="submit">{busy ? <LoaderCircle size={17} className="animate-spin" /> : <Phone size={17} />}{busy ? "در حال ارسال..." : "دریافت کد ورود"}</button>
+            <button className="auth-submit" disabled={busy || !mobile.trim() || !userName.trim()} type="submit">{busy ? <LoaderCircle size={17} className="animate-spin" /> : <Phone size={17} />}{busy ? "در حال ارسال..." : "دریافت کد ورود"}</button>
           </form>
         ) : (
           <form className="auth-form" onSubmit={verifyCode}>
