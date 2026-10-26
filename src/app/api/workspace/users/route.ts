@@ -118,7 +118,7 @@ export async function POST(request: Request) {
   if (
     typeof input.mobile !== "string" ||
     (typeof input.roleId !== "string" && typeof input.roleId !== "number") ||
-    !/^\\d+$/.test(String(input.roleId))
+    !/^[0-9]+$/.test(String(input.roleId))
   ) {
     return json({ error: "شماره موبایل یا نقش انتخاب‌شده معتبر نیست." }, 400);
   }
