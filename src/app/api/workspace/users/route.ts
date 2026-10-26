@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSqlPool, sql } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/guard";
 import { normalizeMobile } from "@/lib/auth/otp";
+import { getTenantSecurityRoles, syncTenantSecurityUser } from "@/lib/tenant-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,7 +46,7 @@ export async function GET(request: Request) {
     }
 
     const pool = await getSqlPool();
-    const [membersResult, rolesResult] = await Promise.all([
+    const [membersResult, tenantRoles] = await Promise.all([
       pool.request()
         .input("tenantId", sql.BigInt, tenant.TenantId)
         .query(`
@@ -71,12 +72,7 @@ export async function GET(request: Request) {
             u.Email, u.PasswordHash, tu.IsOwner, tu.IsActive, tu.JoinedAt
           ORDER BY tu.IsOwner DESC, u.FullName;
         `),
-      pool.request().query(`
-        SELECT RoleId, Name, Description
-        FROM dbo.Roles
-        WHERE Name IN (N'TenantManager', N'TenantUser')
-        ORDER BY RoleId;
-      `),
+      getTenantSecurityRoles(tenant.TenantId),
     ]);
 
     return json({
@@ -92,11 +88,7 @@ export async function GET(request: Request) {
         joinedAt: row.JoinedAt,
         roles: row.RoleNames ? String(row.RoleNames).split(",") : [],
       })),
-      roles: rolesResult.recordset.map((row) => ({
-        roleId: String(row.RoleId),
-        name: String(row.Name),
-        description: row.Description == null ? "" : String(row.Description),
-      })),
+      roles: tenantRoles,
     });
   } catch {
     return json({ error: "دریافت فهرست کاربران ممکن نشد." }, 503);
@@ -122,11 +114,11 @@ export async function POST(request: Request) {
     return json({ error: "درخواست نامعتبر است." }, 400);
   }
 
-  const input = body as { mobile?: unknown; roleName?: unknown };
+  const input = body as { mobile?: unknown; roleId?: unknown };
   if (
     typeof input.mobile !== "string" ||
-    typeof input.roleName !== "string" ||
-    !["TenantManager", "TenantUser"].includes(input.roleName)
+    (typeof input.roleId !== "string" && typeof input.roleId !== "number") ||
+    !/^\\d+$/.test(String(input.roleId))
   ) {
     return json({ error: "شماره موبایل یا نقش انتخاب‌شده معتبر نیست." }, 400);
   }
@@ -197,15 +189,27 @@ export async function POST(request: Request) {
         tenantUserId = String(membership.recordset[0].TenantUserId);
       }
 
+      const tenantRoles = await getTenantSecurityRoles(tenant.TenantId);
+      const selectedRole = tenantRoles.find((role) => role.roleId === String(input.roleId));
+      if (!selectedRole) throw new Error("ROLE_NOT_FOUND");
+
+      // Keep the master membership role for existing workspace authorization.
+      const masterRoleName = selectedRole.name === "Administrator" ? "TenantManager" : "TenantUser";
       const roleResult = await new sql.Request(tx)
-        .input("roleName", sql.NVarChar(200), input.roleName)
-        .query(`
-          SELECT TOP (1) RoleId
-          FROM dbo.Roles
-          WHERE Name = @roleName AND IsSystemRole = 1;
-        `);
+        .input("roleName", sql.NVarChar(200), masterRoleName)
+        .query("SELECT TOP (1) RoleId FROM dbo.Roles WHERE Name = @roleName AND IsSystemRole = 1;");
       const roleId = roleResult.recordset[0]?.RoleId;
       if (!roleId) throw new Error("ROLE_NOT_FOUND");
+
+      await syncTenantSecurityUser({
+        tenantId: tenant.TenantId,
+        masterUserId: user.UserId,
+        userName: String(user.Mobile || mobile),
+        displayName: String(user.FullName || user.Mobile || mobile),
+        passwordHash: String(user.PasswordHash || ""),
+        roleId: selectedRole.roleId,
+        isActive: true,
+      });
 
       await new sql.Request(tx)
         .input("tenantUserId", sql.BigInt, tenantUserId)
