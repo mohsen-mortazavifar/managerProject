@@ -16,11 +16,14 @@ export async function POST(request: Request) {
   try { body = await request.json(); } catch { return respond({ error: "درخواست نامعتبر است." }, 400); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return respond({ error: "درخواست نامعتبر است." }, 400);
 
-  const input = body as { mobile?: unknown; password?: unknown };
-  if (typeof input.mobile !== "string" || typeof input.password !== "string" ||
+  const input = body as { mobile?: unknown; userName?: unknown; password?: unknown };
+  if (typeof input.mobile !== "string" || typeof input.userName !== "string" || typeof input.password !== "string" ||
     input.password.length < 1 || input.password.length > 1024) {
     return respond({ error: "شماره موبایل یا رمز عبور معتبر نیست." }, 400);
   }
+
+  const userName = input.userName.trim().toLowerCase();
+  if (!/^[a-z0-9._-]{3,100}$/.test(userName)) return respond({ error: "نام کاربری معتبر نیست." }, 400);
 
   let mobile: string;
   try { mobile = normalizeMobile(input.mobile); }
@@ -34,10 +37,10 @@ export async function POST(request: Request) {
     }
 
     const pool = await getSqlPool();
-    const result = await pool.request().input("mobile", sql.NVarChar(40), mobile).query(`
+    const result = await pool.request().input("mobile", sql.NVarChar(40), mobile).input("userName", sql.NVarChar(100), userName).query(`
       SELECT TOP (1) UserId, Email, PasswordHash, FullName, IsActive, IsSystemAdmin, IsPlatformUser, MobileVerifiedAt
       FROM dbo.Users
-      WHERE Mobile = @mobile AND DeletedAt IS NULL;
+      WHERE Mobile = @mobile AND LOWER(UserName) = @userName AND DeletedAt IS NULL;
     `);
     const row = result.recordset[0];
     const validPassword = row ? await verifyPassword(input.password, String(row.PasswordHash || "")) : false;
