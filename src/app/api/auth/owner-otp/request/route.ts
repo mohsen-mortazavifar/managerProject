@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   const businessName = typeof input.businessName === "string" ? input.businessName.trim() : "";
   const businessAddress = typeof input.businessAddress === "string" ? input.businessAddress.trim() : "";
   const businessPhone = typeof input.businessPhone === "string" ? input.businessPhone.trim() : "";
-  if (purpose === "register" && (!fullName || fullName.length > 200 || !businessName || businessName.length > 200 || !userName || !/^[a-z0-9._-]{3,100}$/.test(userName) || !businessAddress || businessAddress.length > 500 || !businessPhone || !/^[+0-9()\\-\\s]{7,30}$/.test(businessPhone))) {
+  if (purpose === "register" && (!fullName || fullName.length > 200 || !businessName || businessName.length > 200 || !userName || !/^[a-z0-9._-]{3,100}$/.test(userName) || !businessAddress || businessAddress.length > 500 || !businessPhone || !/^[+0-9() -]{7,30}$/.test(businessPhone))) {
     return response({ error: "نام کاربری (۳ تا ۱۰۰ حرف انگلیسی)، نام، نام کسب‌وکار، نشانی و تلفن ثابت را درست وارد کنید." }, 400);
   }
   if (purpose === "login" && (!userName || !/^[a-z0-9._-]{3,100}$/.test(userName))) {
