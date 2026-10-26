@@ -36,6 +36,7 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [planActive, setPlanActive] = useState(false);
 
   const refresh = useCallback(async (quiet = false) => {
     const token = sessionStorage.getItem("repairMasterAccessToken");
@@ -76,7 +77,24 @@ export default function OnboardingPage() {
       setData(result);
       setError("");
       if (result.tenant?.status === "Active" && result.database?.ready) {
-        router.replace("/workspace");
+        const subscriptionResponse = await fetch("/api/subscription-orders", {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        if (subscriptionResponse.ok) {
+          const subscriptionData = await subscriptionResponse.json() as { orders?: Array<{ status: string; endsAt: string }> };
+          const hasActivePlan = (subscriptionData.orders || []).some((order) =>
+            order.status === "Active" && new Date(order.endsAt).getTime() > Date.now()
+          );
+          setPlanActive(hasActivePlan);
+          if (hasActivePlan) {
+            router.replace("/workspace");
+          }
+        } else {
+          setPlanActive(false);
+        }
+      } else {
+        setPlanActive(false);
       }
     } catch {
       setError("ارتباط با سرور برقرار نشد. دوباره تلاش کنید.");
@@ -113,20 +131,24 @@ export default function OnboardingPage() {
   const tenantStatus = data?.tenant?.status ?? "";
   const jobStatus = data?.provisioning?.status ?? "";
   const failed = tenantStatus === "Failed" || jobStatus === "Failed";
-  const active = tenantStatus === "Active" && Boolean(data?.database?.ready);
+  const databaseReady = tenantStatus === "Active" && Boolean(data?.database?.ready);
+  const active = databaseReady && planActive;
+  const waitingForPlan = databaseReady && !planActive && !failed;
 
   return (
     <main className="auth-page" dir="rtl">
       <section className="auth-card onboarding-card">
         <div className="auth-brand"><span>RM</span><div><strong>Repair Master</strong><small>راه‌اندازی فضای کسب‌وکار</small></div></div>
         <div className="auth-icon">{active ? <CheckCircle2 size={23} /> : failed ? <CircleAlert size={23} /> : <Building2 size={23} />}</div>
-        <h1>{loading ? "در حال دریافت وضعیت..." : active ? "فضای کسب‌وکار آماده است" : failed ? "آماده‌سازی کامل نشد" : "در حال آماده‌سازی فضای شما"}</h1>
+        <h1>{loading ? "در حال دریافت وضعیت..." : active ? "فضای کسب‌وکار فعال است" : waitingForPlan ? "فضای شما آماده است؛ پلن را فعال کنید" : failed ? "آماده‌سازی کامل نشد" : "در حال آماده‌سازی فضای شما"}</h1>
         <p className="auth-description">
           {active
-            ? "دیتابیس و ساختار اولیه فضای کسب‌وکار شما آماده است."
-            : failed
-              ? "فرایند خودکار پس از چند تلاش ناموفق متوقف شده است. شناسه پیگیری را برای پشتیبانی نگه دارید."
-              : "در حال ایجاد دیتابیس اختصاصی و نصب ساختار اولیه هستیم. این صفحه هر ۵ ثانیه وضعیت را بررسی می‌کند."}
+            ? "دیتابیس و ساختار اولیه آماده است و اشتراک فعال شما امکان ورود به پنل را فراهم می‌کند."
+            : waitingForPlan
+              ? "برای جلوگیری از سردرگمی، ورود به پنل اصلی پس از فعال شدن اشتراک نمایش داده می‌شود. پلن آزمایشی را درخواست کنید یا یک پلن انتخاب و سفارش را تکمیل کنید."
+              : failed
+                ? "فرایند خودکار پس از چند تلاش ناموفق متوقف شده است. شناسه پیگیری را برای پشتیبانی نگه دارید."
+                : "در حال ایجاد دیتابیس اختصاصی و نصب ساختار اولیه هستیم. این صفحه هر ۵ ثانیه وضعیت را بررسی می‌کند."}
         </p>
 
         {loading && <div className="onboarding-loading"><LoaderCircle className="animate-spin" size={22} /> لطفاً چند لحظه صبر کنید.</div>}
@@ -145,6 +167,8 @@ export default function OnboardingPage() {
         {failed && <p className="auth-error" role="status">در صورت نیاز، مدیر سیستم باید لاگ پردازش را با شناسه پیگیری بررسی کند.</p>}
 
         <div className="onboarding-actions">
+          {waitingForPlan && <button className="auth-submit" type="button" onClick={() => router.push("/workspace/subscription2")}><ShieldCheck size={17} /> انتخاب و فعال‌سازی پلن</button>}
+          {active && <button className="auth-submit" type="button" onClick={() => router.push("/workspace")}><CheckCircle2 size={17} /> ورود به پنل کسب‌وکار</button>}
           <button className="auth-submit" type="button" disabled={refreshing} onClick={() => void refresh()}>
             {refreshing ? <LoaderCircle size={17} className="animate-spin" /> : <RefreshCw size={17} />}
             بررسی دوباره وضعیت
