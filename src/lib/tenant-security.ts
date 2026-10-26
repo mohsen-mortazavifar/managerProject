@@ -53,6 +53,25 @@ async function getTenantPool(tenantId: TenantUserInput["tenantId"]) {
   return pool.connect();
 }
 
+export async function getTenantSecurityRoles(tenantId: string | number | bigint) {
+  const pool = await getTenantPool(tenantId);
+  try {
+    const result = await pool.request().query(`
+      SELECT RoleId, Name, Description, IsSystem
+      FROM security.Roles
+      ORDER BY Name;
+    `);
+    return result.recordset.map((row) => ({
+      roleId: String(row.RoleId),
+      name: String(row.Name),
+      description: row.Description == null ? "" : String(row.Description),
+      isSystem: Boolean(row.IsSystem),
+    }));
+  } finally {
+    await pool.close();
+  }
+}
+
 export async function syncTenantSecurityUser(input: TenantUserInput): Promise<void> {
   if (!input.userName.trim() || input.userName.length > 100 || !input.displayName.trim() || input.displayName.length > 150) {
     throw new Error("TENANT_USER_FIELDS_INVALID");
