@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       .input("tenantId", sql.BigInt, tenant.TenantId)
       .input("tenantUserId", sql.BigInt, input.tenantUserId)
       .query(`
-        SELECT TOP (1) u.UserId, u.MobileVerifiedAt, u.PasswordHash, tu.IsOwner, tu.IsActive
+        SELECT TOP (1) u.UserId, u.Mobile, u.FullName, u.MobileVerifiedAt, u.PasswordHash, tu.IsOwner, tu.IsActive
         FROM dbo.TenantUsers tu
         INNER JOIN dbo.Users u ON u.UserId = tu.UserId
         WHERE tu.TenantId = @tenantId AND tu.TenantUserId = @tenantUserId
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
         tenantId: tenant.TenantId,
         masterUserId: member.UserId,
         userName: String(member.Mobile || member.UserId),
-        displayName: String(member.UserId),
+        displayName: String(member.FullName || member.Mobile || member.UserId),
         passwordHash,
         roleId: tenantRoleId,
         isActive: true,
