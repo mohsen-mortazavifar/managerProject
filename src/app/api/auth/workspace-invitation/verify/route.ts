@@ -53,7 +53,7 @@ export async function POST(request: Request) {
         .query("UPDATE dbo.WorkspaceInviteOtpChallenges SET ConsumedAt = SYSUTCDATETIME() WHERE ChallengeId = @challengeId;");
 
       let userResult = await new sql.Request(tx).input("mobile", sql.NVarChar(40), mobile)
-        .query("SELECT TOP (1) UserId, IsActive, DeletedAt FROM dbo.Users WITH (UPDLOCK, HOLDLOCK) WHERE Mobile = @mobile;");
+        .query("SELECT TOP (1) UserId, IsActive, DeletedAt, PasswordHash, FullName, Mobile FROM dbo.Users WITH (UPDLOCK, HOLDLOCK) WHERE Mobile = @mobile;");
       let user = userResult.recordset[0];
       if (user && (user.DeletedAt || !Boolean(user.IsActive))) {
         await tx.rollback(); return json({ error: "حساب این شماره غیرفعال است؛ با مدیر سیستم تماس بگیرید." }, 403);
