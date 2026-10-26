@@ -84,7 +84,7 @@ export default function OwnerLoginPage() {
   return (
     <main className="auth-page" dir="rtl">
       <section className="auth-card">
-        <Link className="auth-back" href="/"><ArrowRight size={16} /> صفحه اصلی</Link>
+        <Link className="auth-back" href="/login"><ArrowRight size={16} /> ورود مدیر سیستم</Link>
         <div className="auth-brand"><span>RM</span><div><strong>Repair Master</strong><small>ورود به فضای کسب‌وکار</small></div></div>
         <div className="auth-icon"><Phone size={23} /></div>
         <h1>ورود مالک با موبایل</h1>
