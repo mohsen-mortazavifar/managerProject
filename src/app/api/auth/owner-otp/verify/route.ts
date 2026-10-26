@@ -15,15 +15,12 @@ export async function POST(request: Request) {
   try { body = await request.json(); } catch { return respond({ error: "درخواست نامعتبر است." }, 400); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return respond({ error: "درخواست نامعتبر است." }, 400);
 
-  const input = body as { challengeId?: unknown; mobile?: unknown; userName?: unknown; code?: unknown };
+  const input = body as { challengeId?: unknown; mobile?: unknown; code?: unknown };
   if (typeof input.challengeId !== "string" ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.challengeId) ||
-    typeof input.mobile !== "string" || typeof input.userName !== "string" || typeof input.code !== "string" || !/^\d{6}$/.test(input.code)) {
+    typeof input.mobile !== "string" || typeof input.code !== "string" || !/^\d{6}$/.test(input.code)) {
     return respond({ error: "کد یا اطلاعات درخواست معتبر نیست." }, 400);
   }
-
-  const userName = input.userName.trim().toLowerCase();
-  if (!/^[a-z0-9._-]{3,100}$/.test(userName)) return respond({ error: "نام کاربری معتبر نیست." }, 400);
 
   let mobile: string;
   try { mobile = normalizeMobile(input.mobile); } catch { return respond({ error: "کد یا اطلاعات درخواست معتبر نیست." }, 400); }
@@ -39,13 +36,13 @@ export async function POST(request: Request) {
         .input("challengeId", sql.UniqueIdentifier, input.challengeId)
         .input("mobile", sql.NVarChar(40), mobile)
         .query(`
-          SELECT TOP (1) ChallengeId, Mobile, Purpose, FullName, BusinessName, UserName, BusinessAddress, BusinessPhone, OtpHash,
+          SELECT TOP (1) ChallengeId, Mobile, Purpose, FullName, BusinessName, BusinessAddress, BusinessPhone, OtpHash,
                  ExpiresAt, Attempts, MaxAttempts, ConsumedAt
           FROM dbo.OwnerOtpChallenges WITH (UPDLOCK, ROWLOCK)
           WHERE ChallengeId = @challengeId AND Mobile = @mobile;
         `);
       const challenge = found.recordset[0];
-      if (!challenge || String(challenge.UserName || "").toLowerCase() !== userName || challenge.ConsumedAt || new Date(challenge.ExpiresAt).getTime() <= Date.now() ||
+      if (!challenge || challenge.ConsumedAt || new Date(challenge.ExpiresAt).getTime() <= Date.now() ||
         Number(challenge.Attempts) >= Number(challenge.MaxAttempts)) {
         await tx.rollback();
         return respond({ error: "کد معتبر نیست یا منقضی شده است." }, 400);
@@ -70,12 +67,11 @@ export async function POST(request: Request) {
         const businessName = String(challenge.BusinessName || "").trim();
         const businessAddress = String(challenge.BusinessAddress || "").trim();
         const businessPhone = String(challenge.BusinessPhone || "").trim();
-        if (!fullName || !businessName || !businessAddress || !businessPhone || !userName) throw new Error("OTP_REGISTRATION_DATA_MISSING");
+        if (!fullName || !businessName || !businessAddress || !businessPhone) throw new Error("OTP_REGISTRATION_DATA_MISSING");
 
         const exists = await new sql.Request(tx)
           .input("mobile", sql.NVarChar(40), mobile)
-          .input("userName", sql.NVarChar(100), userName)
-          .query("SELECT TOP (1) UserId FROM dbo.Users WHERE (Mobile = @mobile OR LOWER(UserName) = @userName) AND DeletedAt IS NULL;");
+          .query("SELECT TOP (1) UserId FROM dbo.Users WHERE Mobile = @mobile AND DeletedAt IS NULL;");
         if (exists.recordset[0]) {
           await tx.commit();
           return respond({ error: "این شماره قبلاً ثبت شده است؛ لطفاً وارد شوید." }, 409);
@@ -84,12 +80,11 @@ export async function POST(request: Request) {
         const userResult = await new sql.Request(tx)
           .input("mobile", sql.NVarChar(40), mobile)
           .input("fullName", sql.NVarChar(200), fullName)
-          .input("userName", sql.NVarChar(100), userName)
           .query(`
             INSERT INTO dbo.Users
-              (Email, Mobile, UserName, PasswordHash, FullName, IsActive, IsSystemAdmin, IsPlatformUser, MobileVerifiedAt, CreatedAt, UpdatedAt)
+              (Email, Mobile, PasswordHash, FullName, IsActive, IsSystemAdmin, IsPlatformUser, MobileVerifiedAt, CreatedAt, UpdatedAt)
             OUTPUT INSERTED.UserId
-            VALUES (NULL, @mobile, @userName, NULL, @fullName, 1, 0, 0, SYSUTCDATETIME(), SYSUTCDATETIME(), SYSUTCDATETIME());
+            VALUES (NULL, @mobile, NULL, @fullName, 1, 0, 0, SYSUTCDATETIME(), SYSUTCDATETIME(), SYSUTCDATETIME());
           `);
         const userId = userResult.recordset[0]?.UserId;
         if (!userId) throw new Error("USER_INSERT_FAILED");
