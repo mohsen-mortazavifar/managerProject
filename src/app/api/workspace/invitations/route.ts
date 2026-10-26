@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getSqlPool, sql } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/guard";
+import { getTenantSecurityRoles } from "@/lib/tenant-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,13 +48,17 @@ export async function POST(request: Request) {
   let body: unknown;
   try { body = await request.json(); } catch { return json({ error: "درخواست نامعتبر است." }, 400); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "درخواست نامعتبر است." }, 400);
-  const roleName = (body as { roleName?: unknown }).roleName;
-  if (typeof roleName !== "string" || !["TenantManager", "TenantUser"].includes(roleName)) {
+  const roleId = (body as { roleId?: unknown }).roleId;
+  if ((typeof roleId !== "string" && typeof roleId !== "number") || !/^[0-9]+$/.test(String(roleId))) {
     return json({ error: "نقش انتخاب‌شده معتبر نیست." }, 400);
   }
   try {
     const tenant = await ownerTenant(auth.user.userId);
     if (!tenant) return json({ error: "دسترسی مالک کسب‌وکار لازم است یا کسب‌وکار هنوز فعال نشده است." }, 403);
+    const tenantRoles = await getTenantSecurityRoles(tenant.TenantId);
+    const selectedRole = tenantRoles.find((role) => role.roleId === String(roleId));
+    if (!selectedRole) return json({ error: "نقش انتخاب‌شده در دیتابیس کسب‌وکار وجود ندارد." }, 400);
+    const roleName = selectedRole.name;
     const pool = await getSqlPool();
     const active = await pool.request().input("tenantId", sql.BigInt, tenant.TenantId).query(`
       SELECT COUNT_BIG(*) AS Total FROM dbo.WorkspaceInvitations
