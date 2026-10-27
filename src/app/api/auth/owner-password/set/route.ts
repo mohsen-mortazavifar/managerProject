@@ -29,7 +29,7 @@ export async function POST(request: Request) {
   try {
     const pool = await getSqlPool();
     const account = await pool.request().input("userId", sql.BigInt, auth.user.userId).query(`
-      SELECT TOP (1) MobileVerifiedAt, IsPlatformUser, IsSystemAdmin
+      SELECT TOP (1) MobileVerifiedAt, IsPlatformUser, IsSystemAdmin, Email, Mobile, FullName
       FROM dbo.Users WHERE UserId = @userId AND DeletedAt IS NULL AND IsActive = 1;
     `);
     const row = account.recordset[0];
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "برای تعیین رمز عبور ابتدا باید حساب کسب‌وکار با پیامک تأیید شود." }, { status: 403 });
     }
     const ownerMembership = await pool.request().input("userId", sql.BigInt, auth.user.userId).query(`
-      SELECT TOP (1) 1 AS IsOwner
+      SELECT TOP (1) tu.TenantId
       FROM dbo.TenantUsers tu
       INNER JOIN dbo.Tenants t ON t.TenantId = tu.TenantId
       WHERE tu.UserId = @userId AND tu.IsOwner = 1 AND tu.IsActive = 1
@@ -54,7 +54,29 @@ export async function POST(request: Request) {
         SET PasswordHash = @passwordHash, UpdatedAt = SYSUTCDATETIME()
         WHERE UserId = @userId AND DeletedAt IS NULL AND IsActive = 1;
       `);
-    return NextResponse.json({ message: "رمز عبور پشتیبان تنظیم شد." }, { headers: { "Cache-Control": "no-store" } });
+
+    // Provision the tenant-local owner only after the owner has chosen a password.
+    // The worker creates/migrates the database first and no longer seeds a passwordless user.
+    const tenantId = ownerMembership.recordset[0]?.TenantId;
+    if (!tenantId) {
+      return NextResponse.json({ error: "کسب‌وکار مالک پیدا نشد." }, { status: 409 });
+    }
+
+    const { syncTenantSecurityUser } = await import("@/lib/tenant-security");
+    await syncTenantSecurityUser({
+      tenantId,
+      masterUserId: auth.user.userId,
+      userName: String(row.Mobile || row.Email || `owner-${auth.user.userId}`).trim().slice(0, 100),
+      displayName: String(row.FullName || row.Mobile || row.Email || `owner-${auth.user.userId}`).trim().slice(0, 150),
+      passwordHash,
+      roleId: 1,
+      isActive: true,
+    });
+
+    return NextResponse.json(
+      { message: "رمز عبور تنظیم شد و حساب مالک در دیتابیس کسب‌وکار همگام شد." },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch {
     return NextResponse.json({ error: "تنظیم رمز عبور موقتاً ممکن نیست." }, { status: 503 });
   }
