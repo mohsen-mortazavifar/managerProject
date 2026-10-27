@@ -912,6 +912,19 @@ BEGIN
   CREATE INDEX IX_security_UserRoles_RoleId ON security.UserRoles(RoleId);
 END;
 GO
+IF OBJECT_ID(N'security.UserRoles2', N'U') IS NULL
+BEGIN
+  CREATE TABLE security.UserRoles2 (
+    UserId BIGINT NOT NULL,
+    RoleId BIGINT NOT NULL,
+    CreatedAt DATETIME2(0) NOT NULL CONSTRAINT DF_security_UserRoles2_CreatedAt DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT PK_security_UserRoles2 PRIMARY KEY (UserId, RoleId),
+    CONSTRAINT FK_security_UserRoles2_Users FOREIGN KEY (UserId) REFERENCES security.Users(UserId),
+    CONSTRAINT FK_security_UserRoles2_Roles FOREIGN KEY (RoleId) REFERENCES security.Roles(RoleId)
+  );
+  CREATE INDEX IX_security_UserRoles2_RoleId ON security.UserRoles2(RoleId);
+END;
+GO
 IF OBJECT_ID(N'security.RolePermissions', N'U') IS NULL
 BEGIN
   CREATE TABLE security.RolePermissions (
