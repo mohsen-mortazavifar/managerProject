@@ -3,7 +3,7 @@ import { isIP } from "node:net";
 import { getSqlPool, sql } from "@/lib/db";
 
 const WINDOW_MINUTES = 15;
-const MAX_EMAIL_FAILURES = 8;
+const MAX_EMAIL_FAILURES = 18;
 const MAX_IP_FAILURES = 30;
 
 export type LoginRateLimitResult =

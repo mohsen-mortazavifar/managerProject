@@ -8,11 +8,12 @@
     "start": "next start",
     "lint": "eslint",
     "bootstrap:admin": "node --env-file=.env.local scripts/create-admin.mjs",
-    "provisioning:worker": "node --env-file=.env.local scripts/provisioning-worker.mjs"
+    "provisioning:worker": "node --env-file=.env.local scripts/provisioning-worker.mjs",
+    "subscription:worker": "node --env-file=.env.local scripts/subscription-worker.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.61.0",
-    "mssql": "^12.7.10",
+    "mssql": "12.7.4",
     "next": "16.3.5",
     "react": "19.2.8",
     "react-dom": "19.2.8"

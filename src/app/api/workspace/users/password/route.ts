@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSqlPool, sql } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/guard";
 import { hashPassword } from "@/lib/auth/password";
+import { getTenantSecurityUserRoleId, syncTenantSecurityUser } from "@/lib/tenant-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,7 +46,7 @@ export async function POST(request: Request) {
       .input("tenantId", sql.BigInt, tenant.TenantId)
       .input("tenantUserId", sql.BigInt, input.tenantUserId)
       .query(`
-        SELECT TOP (1) u.UserId, u.MobileVerifiedAt, u.PasswordHash, tu.IsOwner, tu.IsActive
+        SELECT TOP (1) u.UserId, u.Mobile, u.FullName, u.MobileVerifiedAt, u.PasswordHash, tu.IsOwner, tu.IsActive
         FROM dbo.TenantUsers tu
         INNER JOIN dbo.Users u ON u.UserId = tu.UserId
         WHERE tu.TenantId = @tenantId AND tu.TenantUserId = @tenantUserId
@@ -74,6 +75,19 @@ export async function POST(request: Request) {
       `);
     if (Number(update.recordset[0]?.UpdatedCount ?? 0) !== 1) {
       return json({ error: "رمز عبور هم‌زمان تغییر کرده است؛ فهرست اعضا را تازه‌سازی کنید." }, 409);
+    }
+
+    const tenantRoleId = await getTenantSecurityUserRoleId(tenant.TenantId, member.UserId);
+    if (tenantRoleId) {
+      await syncTenantSecurityUser({
+        tenantId: tenant.TenantId,
+        masterUserId: member.UserId,
+        userName: String(member.Mobile || member.UserId),
+        displayName: String(member.FullName || member.Mobile || member.UserId).slice(0, 150),
+        passwordHash,
+        roleId: tenantRoleId,
+        isActive: true,
+      });
     }
     return json({ message: "رمز عبور ثبت شد. آن را به‌صورت امن در اختیار صاحب حساب قرار دهید." });
   } catch {

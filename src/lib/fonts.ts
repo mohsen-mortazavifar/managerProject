@@ -10,7 +10,7 @@ export const iranYekan = localFont({
       style: "normal",
     },
     {
-      path: "../assets/fonts/IranYekan-Bold.ttf",
+      path: "../assets/fonts/Iranyekan-bold.ttf",
       weight: "700",
       style: "normal",
     },

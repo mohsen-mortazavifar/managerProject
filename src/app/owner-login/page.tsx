@@ -2,8 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { ArrowRight, KeyRound, LoaderCircle, Phone, ShieldCheck } from "lucide-react";
+import { KeyRound, LoaderCircle, Phone, ShieldCheck } from "lucide-react";
 
 type RequestResult = { challengeId?: string; message?: string; error?: string };
 type VerifyResult = { accessToken?: string; error?: string; user?: { isPlatformUser?: boolean } };
@@ -12,7 +11,7 @@ type PasswordLoginResult = { accessToken?: string; error?: string; user?: { isPl
 export default function OwnerLoginPage() {
   const router = useRouter();
   const [mobile, setMobile] = useState("");
-  const [mode, setMode] = useState<"otp" | "password">("otp");
+  const [mode, setMode] = useState<"otp" | "password">("password");
   const [password, setPassword] = useState("");
   const [challengeId, setChallengeId] = useState("");
   const [code, setCode] = useState("");
@@ -38,7 +37,7 @@ export default function OwnerLoginPage() {
   async function loginWithPassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
     try {
-      const response = await fetch("/api/auth/workspace-password/login", {
+      const response = await fetch("/api/auth/owner-password/login", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mobile, password }),
       });
@@ -68,28 +67,30 @@ export default function OwnerLoginPage() {
   return (
     <main className="auth-page" dir="rtl">
       <section className="auth-card">
-        <Link className="auth-back" href="/"><ArrowRight size={16} /> صفحه اصلی</Link>
+        
         <div className="auth-brand"><span>RM</span><div><strong>Repair Master</strong><small>ورود به فضای کسب‌وکار</small></div></div>
         <div className="auth-icon"><Phone size={23} /></div>
         <h1>ورود مالک با موبایل</h1>
-        <p className="auth-description">شماره موبایل تأییدشده را وارد کنید تا کد یک‌بارمصرف دریافت کنید.</p>
+        <p className="auth-description">شماره موبایل و رمز عبور خود را وارد کنید تا به پنل کسب‌وکار بروید.</p>
         {mode === "password" ? (
           <form className="auth-form" onSubmit={loginWithPassword}>
-            <label htmlFor="mobile-password"><Phone size={15} /> شماره موبایل</label>
-            <input id="mobile-password" type="tel" autoComplete="tel" required maxLength={20} value={mobile} onChange={e => setMobile(e.target.value)} placeholder="09121234567" dir="ltr" />
-            <label htmlFor="member-password"><KeyRound size={15} /> رمز عبور</label>
-            <input id="member-password" type="password" autoComplete="current-password" required maxLength={1024} value={password} onChange={e => setPassword(e.target.value)} />
+            <label htmlFor="mobile"><Phone size={15} /> شماره موبایل</label>
+            <input id="mobile" type="tel" autoComplete="tel" required maxLength={20} value={mobile} onChange={e => setMobile(e.target.value)} placeholder="09121234567" dir="ltr" />
+            <label htmlFor="password"><KeyRound size={15} /> رمز عبور</label>
+            <input id="password" type="password" autoComplete="current-password" required maxLength={1024} value={password} onChange={e => setPassword(e.target.value)} />
             {error && <p className="auth-error" role="alert">{error}</p>}
-            <button className="auth-submit" disabled={busy || !mobile.trim() || !password} type="submit">{busy ? <LoaderCircle size={17} className="animate-spin" /> : <KeyRound size={17} />}{busy ? "در حال ورود..." : "ورود با رمز عبور"}</button>
-            <button className="auth-secondary" type="button" onClick={() => { setMode("otp"); setPassword(""); setError(""); setNotice(""); }}>ورود با کد پیامک</button>
+            {notice && <p className="auth-success" role="status">{notice}</p>}
+            <button className="auth-submit" disabled={busy || !mobile.trim() || !password} type="submit">{busy ? <LoaderCircle size={17} className="animate-spin" /> : <KeyRound size={17} />}{busy ? "در حال ورود..." : "ورود"}</button>
+            <button className="auth-secondary" type="button" onClick={() => { setMode("otp"); setChallengeId(""); setCode(""); setPassword(""); setError(""); setNotice(""); }}>ورود با رمز یکبار مصرف</button>
           </form>
         ) : !challengeId ? (
           <form className="auth-form" onSubmit={requestCode}>
-            <label htmlFor="mobile"><Phone size={15} /> شماره موبایل</label>
-            <input id="mobile" type="tel" autoComplete="tel" required maxLength={20} value={mobile} onChange={e => setMobile(e.target.value)} placeholder="09121234567" dir="ltr" />
+            <label htmlFor="otp-mobile"><Phone size={15} /> شماره موبایل</label>
+            <input id="otp-mobile" type="tel" autoComplete="tel" required maxLength={20} value={mobile} onChange={e => setMobile(e.target.value)} placeholder="09121234567" dir="ltr" />
             {notice && <p className="auth-success" role="status">{notice}</p>}
             {error && <p className="auth-error" role="alert">{error}</p>}
-            <button className="auth-submit" disabled={busy} type="submit">{busy ? <LoaderCircle size={17} className="animate-spin" /> : <Phone size={17} />}{busy ? "در حال ارسال..." : "دریافت کد ورود"}</button>
+            <button className="auth-submit" disabled={busy || !mobile.trim()} type="submit">{busy ? <LoaderCircle size={17} className="animate-spin" /> : <Phone size={17} />}{busy ? "در حال ارسال..." : "ارسال کد ورود"}</button>
+            <button className="auth-secondary" type="button" onClick={() => { setMode("password"); setError(""); setNotice(""); }}>بازگشت به ورود با رمز عبور</button>
           </form>
         ) : (
           <form className="auth-form" onSubmit={verifyCode}>
@@ -101,9 +102,7 @@ export default function OwnerLoginPage() {
             <button className="auth-secondary" type="button" onClick={() => { setChallengeId(""); setCode(""); setError(""); setNotice(""); }}>تغییر شماره</button>
           </form>
         )}
-        {mode === "otp" && <button className="auth-secondary" type="button" onClick={() => { setMode("password"); setChallengeId(""); setCode(""); setError(""); setNotice(""); }}>همکار هستید؟ ورود با موبایل و رمز عبور</button>}
-        <div className="auth-security"><ShieldCheck size={16} /><span>{mode === "otp" ? "کد یک‌بارمصرف حداکثر ۵ دقیقه اعتبار دارد." : "ورود با رمز فقط برای همکارانی است که مالک برایشان رمز اولیه تعیین کرده است."}</span></div>
-        <p className="auth-footnote">مدیر سیستم همچنان از <a href="/login">صفحه ورود مدیر</a> استفاده می‌کند.</p>
+        <div className="auth-security"><ShieldCheck size={16} /><span>{mode === "otp" ? "کد یک‌بارمصرف حداکثر ۵ دقیقه اعتبار دارد." : "ورود امن به پنل کسب‌وکار"}</span></div>
         <p className="auth-footnote">حساب ندارید؟ <a href="/register">ثبت‌نام مالک</a></p>
       </section>
     </main>

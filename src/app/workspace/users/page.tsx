@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, CircleUserRound, LogOut, Plus, RefreshCw, ShieldCheck, UserRoundX, Users } from "lucide-react";
 
 type Member = {
-  tenantUserId: string; userId: string; fullName: string; mobile: string; email: string;
+  tenantUserId: string; tenantRoleId: string | null; userId: string; fullName: string; mobile: string; email: string;
   isOwner: boolean; isActive: boolean; hasPassword: boolean; joinedAt: string | null; roles: string[];
 };
 type Role = { roleId: string; name: string; description: string };
@@ -14,15 +14,18 @@ type ResponseData = { error?: string; message?: string; members?: Member[]; role
 
 const roleLabels: Record<string, string> = {
   TenantOwner: "مالک کسب‌وکار",
-  TenantManager: "مدیر تعمیرگاه",
+  TenantManager: "مدیر کسب‌وکار",
   TenantUser: "کاربر عادی",
+  Administrator: "مدیر کسب‌وکار",
+  Technician: "تعمیرکار",
+  Reception: "پذیرش",
 };
 
 export default function WorkspaceUsersPage() {
   const router = useRouter();
   const [members, setMembers] = useState<Member[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [roleName, setRoleName] = useState("TenantUser");
+  const [roleId, setRoleId] = useState("");
   const [loading, setLoading] = useState(true);
   const [changingId, setChangingId] = useState("");
   const [error, setError] = useState("");
@@ -50,6 +53,7 @@ export default function WorkspaceUsersPage() {
       if (!response.ok) throw new Error(result.error || "دریافت فهرست اعضا انجام نشد.");
       setMembers(result.members || []);
       setRoles(result.roles || []);
+      setRoleId((current) => current || result.roles?.[0]?.roleId || "");
       const inviteResponse = await fetch("/api/workspace/invitations", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
       const inviteResult = await inviteResponse.json() as ResponseData;
       if (inviteResponse.ok) setInvitations(inviteResult.invitations || []);
@@ -72,7 +76,7 @@ export default function WorkspaceUsersPage() {
       const response = await fetch("/api/workspace/invitations", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ roleName }),
+        body: JSON.stringify({ roleId }),
       });
       const result = await response.json() as ResponseData;
       if (!response.ok || !result.inviteUrl) throw new Error(result.error || "ایجاد دعوت‌نامه انجام نشد.");
@@ -99,10 +103,10 @@ export default function WorkspaceUsersPage() {
     } catch (e) { setError(e instanceof Error ? e.message : "لغو دعوت‌نامه انجام نشد."); }
   }
 
-  async function updateMember(member: Member, change: { isActive?: boolean; roleName?: string }) {
+  async function updateMember(member: Member, change: { isActive?: boolean; roleId?: string }) {
     const token = sessionStorage.getItem("repairMasterAccessToken");
     if (!token) { router.replace("/owner-login"); return; }
-    const actionText = change.roleName ? "نقش عضو تغییر کند؟" : change.isActive ? "عضویت فعال شود؟" : "عضویت غیرفعال شود؟";
+    const actionText = change.roleId ? "نقش عضو تغییر کند؟" : change.isActive ? "عضویت فعال شود؟" : "عضویت غیرفعال شود؟";
     if (!window.confirm(`برای «${member.fullName}» ${actionText}`)) return;
     setChangingId(member.tenantUserId); setError(""); setNotice("");
     try {
@@ -176,8 +180,8 @@ export default function WorkspaceUsersPage() {
           <div className="users-panel-heading"><span><Plus size={19} /></span><div><h2>دعوت عضو جدید</h2><p>یک لینک اختصاصی بسازید و برای فرد ارسال کنید. عضویت فقط پس از تأیید پیامک فعال می‌شود.</p></div></div>
           <div className="users-add-form">
             <label>نقش کاربر
-              <select value={roleName} onChange={(e) => setRoleName(e.target.value)}>
-                {roles.map((role) => <option key={role.roleId} value={role.name}>{roleLabels[role.name] || role.name}</option>)}
+              <select value={roleId} onChange={(e) => setRoleId(e.target.value)}>
+                {roles.map((role) => <option key={role.roleId} value={role.roleId}>{roleLabels[role.name] || role.name}</option>)}
               </select>
             </label>
             <button className="users-primary" type="button" onClick={() => void createInvitation()} disabled={inviteBusy}><Plus size={16} />{inviteBusy ? "در حال ساخت..." : "ایجاد لینک دعوت"}</button>
@@ -203,9 +207,9 @@ export default function WorkspaceUsersPage() {
               <tbody>{members.map((member) => <tr key={member.tenantUserId}>
                 <td><strong>{member.fullName}</strong>{member.email && <small dir="ltr">{member.email}</small>}{member.isOwner && <small>مالک کسب‌وکار</small>}</td>
                 <td dir="ltr" className="users-mobile">{member.mobile || "—"}</td>
-                <td>{member.roles.length ? member.roles.map((r) => roleLabels[r] || r).join("، ") : "بدون نقش"}</td>
+                <td>{member.isOwner ? <span className="users-owner-label">مالک کسب‌وکار</span> : <select className="users-role-select" aria-label={`نقش ${member.fullName}`} value={member.tenantRoleId || ""} disabled={changingId === member.tenantUserId || !member.isActive} onChange={(e) => { if (e.target.value) void updateMember(member, { roleId: e.target.value }); }}><option value="" disabled>انتخاب نقش</option>{roles.map((role) => <option key={role.roleId} value={role.roleId}>{roleLabels[role.name] || role.name}</option>)}</select>}</td>
                 <td><span className={`users-status ${member.isActive ? "users-status-active" : "users-status-off"}`}>{member.isActive ? "فعال" : "غیرفعال"}</span></td>
-                <td>{member.isOwner ? <div className="users-member-actions"><span className="users-owner-label">مالک کسب‌وکار</span>{member.hasPassword ? <span className="users-owner-label">رمز ثبت شده</span> : <button type="button" className="users-primary" onClick={() => { setPasswordTarget(member); setInitialPassword(""); setConfirmInitialPassword(""); }}>تعیین رمز عبور</button>}{passwordTarget?.tenantUserId === member.tenantUserId && <form className="users-invite-link" onSubmit={(e) => void setMemberPassword(e)}><label>رمز عبور (حداقل ۱۲ نویسه)</label><input type="password" autoComplete="new-password" required minLength={12} maxLength={1024} value={initialPassword} onChange={(e) => setInitialPassword(e.target.value)} /><label>تکرار رمز</label><input type="password" autoComplete="new-password" required minLength={12} maxLength={1024} value={confirmInitialPassword} onChange={(e) => setConfirmInitialPassword(e.target.value)} /><button className="users-primary" type="submit" disabled={passwordBusy}>{passwordBusy ? "در حال ذخیره..." : "ذخیره رمز"}</button><button className="users-toggle" type="button" onClick={() => setPasswordTarget(null)}>انصراف</button></form>}</div> : <div className="users-member-actions"><select aria-label={`نقش ${member.fullName}`} value={member.roles[0] || "TenantUser"} disabled={changingId === member.tenantUserId || passwordBusy} onChange={(e) => void updateMember(member, { roleName: e.target.value })}>{roles.filter((r) => ["TenantManager", "TenantUser"].includes(r.name)).map((r) => <option key={r.roleId} value={r.name}>{roleLabels[r.name] || r.name}</option>)}</select><button className={`users-toggle ${member.isActive ? "users-toggle-off" : "users-toggle-on"}`} disabled={changingId === member.tenantUserId} onClick={() => void toggleMember(member)}><UserRoundX size={14} />{changingId === member.tenantUserId ? "در حال ثبت..." : member.isActive ? "غیرفعال‌کردن" : "فعال‌کردن"}</button>{member.hasPassword ? <span className="users-owner-label">رمز ثبت شده</span> : <button type="button" className="users-primary" onClick={() => { setPasswordTarget(member); setInitialPassword(""); setConfirmInitialPassword(""); }} disabled={!member.isActive || passwordBusy}>تعیین رمز اولیه</button>}{passwordTarget?.tenantUserId === member.tenantUserId && <form className="users-invite-link" onSubmit={(e) => void setMemberPassword(e)}><label>رمز اولیه (حداقل ۱۲ نویسه)</label><input type="password" autoComplete="new-password" required minLength={12} maxLength={1024} value={initialPassword} onChange={(e) => setInitialPassword(e.target.value)} /><label>تکرار رمز</label><input type="password" autoComplete="new-password" required minLength={12} maxLength={1024} value={confirmInitialPassword} onChange={(e) => setConfirmInitialPassword(e.target.value)} /><button className="users-primary" type="submit" disabled={passwordBusy}>{passwordBusy ? "در حال ذخیره..." : "ذخیره رمز"}</button><button className="users-toggle" type="button" onClick={() => setPasswordTarget(null)}>انصراف</button></form>}</div>}</td>
+                <td>{member.isOwner ? <div className="users-member-actions"><span className="users-owner-label">مالک کسب‌وکار</span>{member.hasPassword ? <span className="users-owner-label">رمز ثبت شده</span> : <button type="button" className="users-primary" onClick={() => { setPasswordTarget(member); setInitialPassword(""); setConfirmInitialPassword(""); }}>تعیین رمز عبور</button>}{passwordTarget?.tenantUserId === member.tenantUserId && <form className="users-invite-link" onSubmit={(e) => void setMemberPassword(e)}><label>رمز عبور (حداقل ۱۲ نویسه)</label><input type="password" autoComplete="new-password" required minLength={12} maxLength={1024} value={initialPassword} onChange={(e) => setInitialPassword(e.target.value)} /><label>تکرار رمز</label><input type="password" autoComplete="new-password" required minLength={12} maxLength={1024} value={confirmInitialPassword} aria-invalid={confirmInitialPassword.length > 0 && initialPassword !== confirmInitialPassword} onChange={(e) => setConfirmInitialPassword(e.target.value)} />{confirmInitialPassword.length > 0 && initialPassword !== confirmInitialPassword && <small className="users-password-mismatch" role="alert">رمز عبور و تکرار آن یکسان نیستند.</small>}<button className="users-primary" type="submit" disabled={passwordBusy || initialPassword.length < 12 || initialPassword !== confirmInitialPassword}>{passwordBusy ? "در حال ذخیره..." : "ذخیره رمز"}</button><button className="users-toggle" type="button" onClick={() => setPasswordTarget(null)}>انصراف</button></form>}</div> : <div className="users-member-actions"><span className="users-owner-label">نقش از فهرست بالا قابل تغییر است</span><button className={`users-toggle ${member.isActive ? "users-toggle-off" : "users-toggle-on"}`} disabled={changingId === member.tenantUserId} onClick={() => void toggleMember(member)}><UserRoundX size={14} />{changingId === member.tenantUserId ? "در حال ثبت..." : member.isActive ? "غیرفعال‌کردن" : "فعال‌کردن"}</button>{member.hasPassword ? <span className="users-owner-label">رمز ثبت شده</span> : <button type="button" className="users-primary" onClick={() => { setPasswordTarget(member); setInitialPassword(""); setConfirmInitialPassword(""); }} disabled={!member.isActive || passwordBusy}>تعیین رمز اولیه</button>}{passwordTarget?.tenantUserId === member.tenantUserId && <form className="users-invite-link" onSubmit={(e) => void setMemberPassword(e)}><label>رمز اولیه (حداقل ۱۲ نویسه)</label><input type="password" autoComplete="new-password" required minLength={12} maxLength={1024} value={initialPassword} onChange={(e) => setInitialPassword(e.target.value)} /><label>تکرار رمز</label><input type="password" autoComplete="new-password" required minLength={12} maxLength={1024} value={confirmInitialPassword} aria-invalid={confirmInitialPassword.length > 0 && initialPassword !== confirmInitialPassword} onChange={(e) => setConfirmInitialPassword(e.target.value)} />{confirmInitialPassword.length > 0 && initialPassword !== confirmInitialPassword && <small className="users-password-mismatch" role="alert">رمز عبور و تکرار آن یکسان نیستند.</small>}<button className="users-primary" type="submit" disabled={passwordBusy || initialPassword.length < 12 || initialPassword !== confirmInitialPassword}>{passwordBusy ? "در حال ذخیره..." : "ذخیره رمز"}</button><button className="users-toggle" type="button" onClick={() => setPasswordTarget(null)}>انصراف</button></form>}</div>}</td>
               </tr>)}</tbody>
             </table></div>
           )}

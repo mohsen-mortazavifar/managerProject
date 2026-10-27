@@ -28,13 +28,15 @@ export async function POST(request: Request) {
   try {
     const pool = await getSqlPool();
     const tx = new sql.Transaction(pool);
+   
     await tx.begin();
+     console.log(",,,,,,,,")
     try {
       const found = await new sql.Request(tx)
         .input("challengeId", sql.UniqueIdentifier, input.challengeId)
         .input("mobile", sql.NVarChar(40), mobile)
         .query(`
-          SELECT TOP (1) ChallengeId, Mobile, Purpose, FullName, BusinessName, OtpHash,
+          SELECT TOP (1) ChallengeId, Mobile, Purpose, FullName, BusinessName, BusinessAddress, BusinessPhone, OtpHash,
                  ExpiresAt, Attempts, MaxAttempts, ConsumedAt
           FROM dbo.OwnerOtpChallenges WITH (UPDLOCK, ROWLOCK)
           WHERE ChallengeId = @challengeId AND Mobile = @mobile;
@@ -63,7 +65,9 @@ export async function POST(request: Request) {
       if (challenge.Purpose === "register") {
         const fullName = String(challenge.FullName || "").trim();
         const businessName = String(challenge.BusinessName || "").trim();
-        if (!fullName || !businessName) throw new Error("OTP_REGISTRATION_DATA_MISSING");
+        const businessAddress = String(challenge.BusinessAddress || "").trim();
+        const businessPhone = String(challenge.BusinessPhone || "").trim();
+        if (!fullName || !businessName || !businessAddress || !businessPhone) throw new Error("OTP_REGISTRATION_DATA_MISSING");
 
         const exists = await new sql.Request(tx)
           .input("mobile", sql.NVarChar(40), mobile)
@@ -91,11 +95,15 @@ export async function POST(request: Request) {
           .input("name", sql.NVarChar(200), businessName)
           .input("code", sql.NVarChar(50), tenantCode)
           .input("mobile", sql.NVarChar(40), mobile)
+          .input("businessAddress", sql.NVarChar(500), businessAddress)
+          .input("businessPhone", sql.NVarChar(30), businessPhone)
           .query(`
+            DECLARE @InsertedTenants TABLE (TenantId BIGINT);
             INSERT INTO dbo.Tenants
-              (Name, Code, Status, ContactEmail, ContactMobile, CreatedAt, UpdatedAt)
-            OUTPUT INSERTED.TenantId
-            VALUES (@name, @code, N'Pending', NULL, @mobile, SYSUTCDATETIME(), SYSUTCDATETIME());
+              (Name, Code, Status, ContactEmail, ContactMobile, BusinessAddress, ContactPhone, CreatedAt, UpdatedAt)
+            OUTPUT INSERTED.TenantId INTO @InsertedTenants (TenantId)
+            VALUES (@name, @code, N'Pending', NULL, @mobile, @businessAddress, @businessPhone, SYSUTCDATETIME(), SYSUTCDATETIME());
+            SELECT TenantId FROM @InsertedTenants;
           `);
         const tenantId = tenantResult.recordset[0]?.TenantId;
         if (!tenantId) throw new Error("TENANT_INSERT_FAILED");
@@ -169,10 +177,6 @@ export async function POST(request: Request) {
           provisioning: { jobId: String(job.JobId), correlationId: String(job.CorrelationId), status: "Queued" },
         }, 201);
       }
-      console.log("[OTP ACCOUNT CHECK]", {
-        purpose: challenge.Purpose,
-        mobile,
-      });
       if (challenge.Purpose === "login") {
         const account = await new sql.Request(tx)
           .input("mobile", sql.NVarChar(40), mobile)
@@ -204,6 +208,7 @@ export async function POST(request: Request) {
       throw error;
     }
   } catch {
+
     return respond({ error: "تأیید کد فعلاً در دسترس نیست." }, 503);
   }
 }
