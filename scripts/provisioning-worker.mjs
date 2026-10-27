@@ -395,10 +395,10 @@ async function seedTenantOwner(masterPool, databaseName, serverName, job) {
         END;
 
         IF NOT EXISTS (
-          SELECT 1 FROM security.UserRoles2
+          SELECT 1 FROM security.UserRoles
           WHERE UserId = @tenantUserId AND RoleId = 1
         )
-          INSERT INTO security.UserRoles2 (UserId, RoleId, CreatedAt)
+          INSERT INTO security.UserRoles (UserId, RoleId, CreatedAt)
           VALUES (@tenantUserId, 1, SYSUTCDATETIME());
 
           COMMIT TRANSACTION;
