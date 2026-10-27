@@ -351,9 +351,10 @@ async function seedTenantOwner(masterPool, databaseName, serverName, job) {
       .input("isActive", sql.Bit, Boolean(owner.IsActive))
       .query(`
         SET XACT_ABORT ON;
-        BEGIN TRANSACTION;
+        BEGIN TRY
+          BEGIN TRANSACTION;
 
-        IF NOT EXISTS (SELECT 1 FROM security.Roles WHERE RoleId = 1)
+          IF NOT EXISTS (SELECT 1 FROM security.Roles WHERE RoleId = 1)
           THROW 51010, 'BUSINESS_MANAGER_ROLE_ID_1_MISSING', 1;
 
         DECLARE @tenantUserId BIGINT;
@@ -400,11 +401,13 @@ async function seedTenantOwner(masterPool, databaseName, serverName, job) {
           INSERT INTO security.UserRoles2 (UserId, RoleId, CreatedAt)
           VALUES (@tenantUserId, 1, SYSUTCDATETIME());
 
-        COMMIT TRANSACTION;
+          COMMIT TRANSACTION;
+        END TRY
+        BEGIN CATCH
+          IF XACT_STATE() <> 0 ROLLBACK TRANSACTION;
+          THROW;
+        END CATCH;
       `);
-  } catch (error) {
-    try { await tenantPool.request().query("IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;"); } catch {}
-    throw error;
   } finally {
     await tenantPool.close();
   }
