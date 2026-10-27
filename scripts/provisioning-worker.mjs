@@ -328,6 +328,10 @@ async function seedTenantOwner(masterPool, databaseName, serverName, job) {
   const owner = ownerResult.recordset[0];
   if (!owner) throw new Error("TENANT_OWNER_NOT_FOUND");
 
+  const masterUserId = Number(owner.UserId);
+  if (!Number.isSafeInteger(masterUserId) || masterUserId <= 0) {
+    throw new Error("TENANT_OWNER_MASTER_USER_ID_INVALID");
+  }
   const userName = String(owner.Mobile || owner.Email || `owner-${owner.UserId}`).trim();
   const displayName = String(owner.FullName || userName).trim();
   const passwordHash = String(owner.PasswordHash || "");
@@ -346,6 +350,9 @@ async function seedTenantOwner(masterPool, databaseName, serverName, job) {
       .input("passwordHash", sql.NVarChar(300), passwordHash.slice(0, 300))
       .input("isActive", sql.Bit, Boolean(owner.IsActive))
       .query(`
+        SET XACT_ABORT ON;
+        BEGIN TRANSACTION;
+
         IF NOT EXISTS (SELECT 1 FROM security.Roles WHERE RoleId = 1)
           THROW 51010, 'BUSINESS_MANAGER_ROLE_ID_1_MISSING', 1;
 
@@ -357,7 +364,7 @@ async function seedTenantOwner(masterPool, databaseName, serverName, job) {
         IF @tenantUserId IS NULL
         BEGIN
           SELECT @tenantUserId = UserId
-          FROM security.Users
+          FROM security.Users WITH (UPDLOCK, HOLDLOCK)
           WHERE UserName = @userName AND MasterUserId IS NULL;
 
           IF @tenantUserId IS NULL
@@ -366,13 +373,14 @@ async function seedTenantOwner(masterPool, databaseName, serverName, job) {
               (UserName, DisplayName, PasswordHash, IsActive, CreatedAt, UpdatedAt, MasterUserId)
             VALUES
               (@userName, @displayName, @passwordHash, @isActive, SYSUTCDATETIME(), SYSUTCDATETIME(), @masterUserId);
-            SET @tenantUserId = SCOPE_IDENTITY();
+            SET @tenantUserId = CONVERT(BIGINT, SCOPE_IDENTITY());
           END
           ELSE
           BEGIN
             UPDATE security.Users
-            SET DisplayName = @displayName, PasswordHash = @passwordHash,
-                IsActive = @isActive, UpdatedAt = SYSUTCDATETIME(), MasterUserId = @masterUserId
+            SET UserName = @userName, DisplayName = @displayName,
+                PasswordHash = @passwordHash, IsActive = @isActive,
+                UpdatedAt = SYSUTCDATETIME(), MasterUserId = @masterUserId
             WHERE UserId = @tenantUserId;
           END
         END
@@ -380,14 +388,23 @@ async function seedTenantOwner(masterPool, databaseName, serverName, job) {
         BEGIN
           UPDATE security.Users
           SET UserName = @userName, DisplayName = @displayName,
-              PasswordHash = @passwordHash, IsActive = @isActive, UpdatedAt = SYSUTCDATETIME()
+              PasswordHash = @passwordHash, IsActive = @isActive,
+              UpdatedAt = SYSUTCDATETIME()
           WHERE UserId = @tenantUserId;
         END;
 
-        IF NOT EXISTS (SELECT 1 FROM security.UserRoles WHERE UserId = @tenantUserId AND RoleId = 1)
-          INSERT INTO security.UserRoles (UserId, RoleId, CreatedAt)
+        IF NOT EXISTS (
+          SELECT 1 FROM security.UserRoles2
+          WHERE UserId = @tenantUserId AND RoleId = 1
+        )
+          INSERT INTO security.UserRoles2 (UserId, RoleId, CreatedAt)
           VALUES (@tenantUserId, 1, SYSUTCDATETIME());
+
+        COMMIT TRANSACTION;
       `);
+  } catch (error) {
+    try { await tenantPool.request().query("IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;"); } catch {}
+    throw error;
   } finally {
     await tenantPool.close();
   }
