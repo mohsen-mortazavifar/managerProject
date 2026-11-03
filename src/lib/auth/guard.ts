@@ -95,7 +95,7 @@ export async function requireAuth(request: Request): Promise<AuthGuardResult> {
       mayUseOwnerSubscriptionFlow = ownerMembership.recordset.length === 1;
     }
 
-    if (!alwaysExemptPaths.has(pathname) && !mayUseOwnerSubscriptionFlow) {
+    if (!isPlatformUser && !alwaysExemptPaths.has(pathname) && !mayUseOwnerSubscriptionFlow) {
       const hasSubscription = await hasActiveSubscriptionForUser(String(user.UserId));
       if (!hasSubscription) {
         return {
