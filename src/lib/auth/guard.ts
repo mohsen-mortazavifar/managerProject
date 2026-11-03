@@ -71,6 +71,7 @@ export async function requireAuth(request: Request): Promise<AuthGuardResult> {
       "/api/auth/logout",
       "/api/available-plans",
       "/api/subscription-orders",
+      "/api/subscription-orders/receipt",
       "/api/tenants/current-status",
       "/api/auth/owner-password/set",
     ]);
