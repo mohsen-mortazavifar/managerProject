@@ -9,6 +9,7 @@ const migrationPath = resolve(here, "../database/tenant-migrations/V1_InitialSch
 const workerId = `${process.env.PROVISIONING_WORKER_ID || "worker"}-${randomUUID()}`;
 const pollMs = positiveInt(process.env.PROVISIONING_POLL_MS, 5000);
 const leaseSeconds = positiveInt(process.env.PROVISIONING_LEASE_SECONDS, 300);
+const heartbeatMs = positiveInt(process.env.PROVISIONING_HEARTBEAT_MS, Math.max(10000, Math.floor(leaseSeconds * 1000 / 3)));
 const once = process.argv.includes("--once");
 
 function positiveInt(value, fallback) {
@@ -70,7 +71,41 @@ async function writeLog(pool, job, status, step, message, details = null) {
     `);
 }
 
+async function recoverExpiredJobs(pool) {
+  const result = await pool.request().query(`
+    ;WITH expired AS (
+      UPDATE dbo.ProvisioningJobs
+      SET Status = CASE WHEN AttemptCount >= MaxAttempts THEN 'Failed' ELSE 'RetryScheduled' END,
+          RunAfter = CASE WHEN AttemptCount >= MaxAttempts THEN RunAfter
+            ELSE DATEADD(minute, CASE WHEN AttemptCount < 2 THEN 1 WHEN AttemptCount < 4 THEN 5 ELSE 15 END, SYSUTCDATETIME()) END,
+          WorkerId = NULL, LockedUntil = NULL,
+          LastErrorCode = CASE WHEN AttemptCount >= MaxAttempts THEN 'LEASE_EXPIRED_MAX_ATTEMPTS' ELSE 'LEASE_EXPIRED_RETRY' END
+      OUTPUT INSERTED.JobId, INSERTED.TenantId, INSERTED.AttemptCount, INSERTED.Status
+      WHERE JobType = 'CreateTenantDatabase' AND Status = 'Running'
+        AND LockedUntil <= SYSUTCDATETIME()
+    )
+    SELECT * FROM expired;
+  `);
+  for (const row of result.recordset) {
+    await pool.request()
+      .input("tenantId", sql.BigInt, row.TenantId)
+      .input("jobId", sql.UniqueIdentifier, row.JobId)
+      .input("status", sql.NVarChar(30), row.Status)
+      .input("attempt", sql.Int, row.AttemptCount)
+      .query(`
+        INSERT INTO dbo.TenantProvisioningLogs
+          (TenantId, JobId, Status, Step, Message, ErrorDetails, AttemptNumber, StartedAt, CreatedAt)
+        VALUES (@tenantId, @jobId, @status, 'LeaseRecovery',
+          CASE WHEN @status = 'Failed' THEN 'Worker lease expired on the final attempt; job moved to Failed.'
+               ELSE 'Worker lease expired; job was scheduled for retry.' END,
+          'The previous worker did not complete before its lease expired.',
+          @attempt, SYSUTCDATETIME(), SYSUTCDATETIME());
+      `);
+  }
+}
+
 async function claimJob(pool) {
+  await recoverExpiredJobs(pool);
   const tx = new sql.Transaction(pool);
   await tx.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
   try {
@@ -79,23 +114,15 @@ async function claimJob(pool) {
       .input("leaseSeconds", sql.Int, leaseSeconds)
       .query(`
         ;WITH nextJob AS (
-          SELECT TOP (1) *
-          FROM dbo.ProvisioningJobs WITH (UPDLOCK, READPAST, ROWLOCK)
-          WHERE JobType = 'CreateTenantDatabase'
-            AND RunAfter <= SYSUTCDATETIME()
-            AND AttemptCount < MaxAttempts
-            AND (
-              Status IN ('Queued', 'RetryScheduled') AND RunAfter <= SYSUTCDATETIME()
-              OR (Status = 'Running'  AND LockedUntil < SYSUTCDATETIME())
-            )
+          SELECT TOP (1) * FROM dbo.ProvisioningJobs WITH (UPDLOCK, READPAST, ROWLOCK)
+          WHERE JobType = 'CreateTenantDatabase' AND RunAfter <= SYSUTCDATETIME()
+            AND AttemptCount < MaxAttempts AND Status IN ('Queued', 'RetryScheduled')
           ORDER BY RunAfter, CreatedAt
         )
         UPDATE nextJob
-        SET Status = 'Running',
-            WorkerId = @workerId,
+        SET Status = 'Running', WorkerId = @workerId,
             LockedUntil = DATEADD(second, @leaseSeconds, SYSUTCDATETIME()),
-            AttemptCount = AttemptCount + 1,
-            StartedAt = COALESCE(StartedAt, SYSUTCDATETIME())
+            AttemptCount = AttemptCount + 1, StartedAt = COALESCE(StartedAt, SYSUTCDATETIME())
         OUTPUT INSERTED.JobId, INSERTED.TenantId, INSERTED.TenantDatabaseId,
                INSERTED.AttemptCount, INSERTED.MaxAttempts, INSERTED.CorrelationId;
       `);
@@ -107,6 +134,46 @@ async function claimJob(pool) {
   }
 }
 
+async function startLeaseHeartbeat(pool, job) {
+  let stopped = false, leaseLost = false, inFlight = false;
+  const heartbeat = async () => {
+    if (stopped || leaseLost || inFlight) return;
+    inFlight = true;
+    try {
+      const result = await pool.request()
+        .input("jobId", sql.UniqueIdentifier, job.JobId)
+        .input("workerId", sql.NVarChar(200), workerId)
+        .input("leaseSeconds", sql.Int, leaseSeconds)
+        .query(`
+          UPDATE dbo.ProvisioningJobs
+          SET LockedUntil = DATEADD(second, @leaseSeconds, SYSUTCDATETIME())
+          WHERE JobId = @jobId AND WorkerId = @workerId AND Status = 'Running'
+            AND LockedUntil > SYSUTCDATETIME();
+          SELECT @@ROWCOUNT AS Affected;
+        `);
+      if (Number(result.recordset[0]?.Affected) !== 1) leaseLost = true;
+    } catch (error) {
+      console.error(`[${job.JobId}] heartbeat failed: ${error.message}`);
+    } finally { inFlight = false; }
+  };
+  const timer = setInterval(heartbeat, heartbeatMs);
+  timer.unref?.();
+  return {
+    async assertOwned() {
+      if (leaseLost) throw new Error("PROVISIONING_LEASE_LOST");
+      const result = await pool.request()
+        .input("jobId", sql.UniqueIdentifier, job.JobId)
+        .input("workerId", sql.NVarChar(200), workerId)
+        .query(`
+          SELECT 1 AS Owned FROM dbo.ProvisioningJobs
+          WHERE JobId = @jobId AND WorkerId = @workerId
+            AND Status = 'Running' AND LockedUntil > SYSUTCDATETIME();
+        `);
+      if (!result.recordset.length) { leaseLost = true; throw new Error("PROVISIONING_LEASE_LOST"); }
+    },
+    stop() { stopped = true; clearInterval(timer); },
+  };
+}
 async function getDatabaseInfo(pool, job) {
   const result = await pool.request()
     .input("tenantId", sql.BigInt, job.TenantId)
@@ -279,51 +346,72 @@ async function provisionTenantSqlCredentials(masterPool, databaseName, job, serv
     `);
 }
 
-async function applyInitialMigration(name, serverName, script, checksum) {
+async function applyInitialMigration(name, serverName, script, migrationChecksum) {
   const tenantPool = await connect(name, serverName, process.env.DB_USER, process.env.DB_PASSWORD, process.env.TENANT_DB_PORT || process.env.DB_PORT);
+  const tx = new sql.Transaction(tenantPool);
+  await tx.begin();
   try {
-    const existing = await tenantPool.request().query(`
-      IF OBJECT_ID(N'dbo.__SchemaVersions', N'U') IS NOT NULL
-        SELECT TOP (1) Version FROM dbo.__SchemaVersions WHERE Version = N'V1_InitialSchema';
-      ELSE SELECT CAST(NULL AS nvarchar(50)) AS Version;
-    `);
-    if (existing.recordset[0]?.Version === "V1_InitialSchema") return;
-
-    for (const batch of splitBatches(script)) {
-      await tenantPool.request().batch(batch);
-    }
-
-    const verify = await tenantPool.request()
-      .input("version", sql.NVarChar(50), "V1_InitialSchema")
-      .input("checksum", sql.NVarChar(128), checksum)
+    await new sql.Request(tx)
+      .input("resource", sql.NVarChar(255), `tenant-schema-migration:${name}`)
       .query(`
-        IF OBJECT_ID(N'dbo.__SchemaVersions', N'U') IS NULL
-          THROW 51000, 'Schema version table was not created.', 1;
-        IF NOT EXISTS (SELECT 1 FROM dbo.__SchemaVersions WHERE Version = @version)
-          INSERT INTO dbo.__SchemaVersions (Version, Description, Checksum)
-          VALUES (@version, N'Initial tenant schema', @checksum);
-        ELSE
-          UPDATE dbo.__SchemaVersions SET Checksum = @checksum WHERE Version = @version AND Checksum IS NULL;
-        SELECT TOP (1) Version FROM dbo.__SchemaVersions WHERE Version = @version;
+        DECLARE @lockResult int;
+        EXEC @lockResult = sys.sp_getapplock @Resource=@resource, @LockMode='Exclusive',
+          @LockOwner='Transaction', @LockTimeout=60000;
+        IF @lockResult < 0 THROW 51020, 'TENANT_MIGRATION_LOCK_FAILED', 1;
       `);
-    if (verify.recordset[0]?.Version !== "V1_InitialSchema") {
-      throw new Error("INITIAL_MIGRATION_VERIFICATION_FAILED");
+    const existing = await new sql.Request(tx)
+      .input("version", sql.NVarChar(50), "V1_InitialSchema")
+      .query(`
+        IF OBJECT_ID(N'dbo.__SchemaVersions', N'U') IS NOT NULL
+          SELECT TOP (1) Version, Checksum FROM dbo.__SchemaVersions WITH (UPDLOCK, HOLDLOCK) WHERE Version=@version;
+        ELSE SELECT CAST(NULL AS nvarchar(50)) AS Version, CAST(NULL AS nvarchar(128)) AS Checksum;
+      `);
+    const applied = existing.recordset[0];
+    if (applied?.Version) {
+      if (applied.Checksum && String(applied.Checksum).toLowerCase() !== migrationChecksum.toLowerCase())
+        throw new Error("MIGRATION_CHECKSUM_MISMATCH: V1_InitialSchema was applied with different contents.");
+      if (!applied.Checksum) {
+        // One-time adoption for databases created by the previous worker, which stored NULL.
+        await new sql.Request(tx)
+          .input("version", sql.NVarChar(50), "V1_InitialSchema")
+          .input("checksum", sql.NVarChar(128), migrationChecksum)
+          .query("UPDATE dbo.__SchemaVersions SET Checksum=@checksum WHERE Version=@version AND Checksum IS NULL;");
+      }
+      await tx.commit();
+      return;
     }
-  } finally {
-    await tenantPool.close();
-  }
+    for (const batch of splitBatches(script)) await new sql.Request(tx).batch(batch);
+    await new sql.Request(tx)
+      .input("version", sql.NVarChar(50), "V1_InitialSchema")
+      .input("checksum", sql.NVarChar(128), migrationChecksum)
+      .query(`
+        IF OBJECT_ID(N'dbo.__SchemaVersions', N'U') IS NULL THROW 51000, 'Schema version table was not created.', 1;
+        IF EXISTS (SELECT 1 FROM dbo.__SchemaVersions WHERE Version=@version)
+          THROW 51021, 'Migration script must not register its own version.', 1;
+        INSERT INTO dbo.__SchemaVersions (Version, Description, Checksum)
+        VALUES (@version, N'Initial tenant schema', @checksum);
+      `);
+    await tx.commit();
+  } catch (error) {
+    try { await tx.rollback(); } catch {}
+    throw error;
+  } finally { await tenantPool.close(); }
 }
-
-async function processJob(pool, job, migration, checksum) {
+async function processJob(pool, job) {
+  const lease = await startLeaseHeartbeat(pool, job);
+  let completed = false;
   try {
+    await lease.assertOwned();
     await writeLog(pool, job, "CreatingDatabase", "CreatingDatabase", "Creating tenant database.");
     const { databaseName, serverName } = await getDatabaseInfo(pool, job);
     await ensureDatabase(databaseName, serverName);
-
+    await lease.assertOwned();
     await writeLog(pool, job, "Migrating", "Migrating", "Applying tenant database schema.");
     await applyInitialMigration(databaseName, serverName, migration, checksum);
-
+    await lease.assertOwned();
     await provisionTenantSqlCredentials(pool, databaseName, job, serverName);
+    await lease.assertOwned();
+
     const tx = new sql.Transaction(pool);
     await tx.begin();
     try {
@@ -331,60 +419,65 @@ async function processJob(pool, job, migration, checksum) {
         .input("tenantId", sql.BigInt, job.TenantId)
         .input("tenantDatabaseId", sql.BigInt, job.TenantDatabaseId)
         .input("jobId", sql.UniqueIdentifier, job.JobId)
+        .input("workerId", sql.NVarChar(200), workerId)
         .input("schemaVersion", sql.NVarChar(50), "V1_InitialSchema")
         .query(`
-          UPDATE dbo.TenantDatabases
-          SET IsActive = 1, SchemaVersion = @schemaVersion, UpdatedAt = SYSUTCDATETIME()
-          WHERE TenantDatabaseId = @tenantDatabaseId AND TenantId = @tenantId;
+          UPDATE dbo.TenantDatabases SET IsActive=1, SchemaVersion=@schemaVersion, UpdatedAt=SYSUTCDATETIME()
+          WHERE TenantDatabaseId=@tenantDatabaseId AND TenantId=@tenantId;
           IF @@ROWCOUNT <> 1 THROW 51001, 'Tenant database metadata update failed.', 1;
-
-          UPDATE dbo.Tenants
-          SET Status = N'Active', UpdatedAt = SYSUTCDATETIME()
-          WHERE TenantId = @tenantId AND Status = N'Pending';
-
+          UPDATE dbo.Tenants SET Status=N'Active', UpdatedAt=SYSUTCDATETIME()
+          WHERE TenantId=@tenantId AND Status=N'Pending';
           UPDATE dbo.ProvisioningJobs
-          SET Status = 'Succeeded', WorkerId = NULL, LockedUntil = NULL,
-              CompletedAt = SYSUTCDATETIME(), LastErrorCode = NULL
-          WHERE JobId = @jobId;
+          SET Status='Succeeded', WorkerId=NULL, LockedUntil=NULL,
+              CompletedAt=SYSUTCDATETIME(), LastErrorCode=NULL
+          WHERE JobId=@jobId AND WorkerId=@workerId AND Status='Running'
+            AND LockedUntil > SYSUTCDATETIME();
+          IF @@ROWCOUNT <> 1 THROW 51022, 'PROVISIONING_LEASE_LOST_BEFORE_COMPLETION', 1;
         `);
       await tx.commit();
-    } catch (error) {
-      try { await tx.rollback(); } catch {}
-      throw error;
-    }
+      completed = true;
+    } catch (error) { try { await tx.rollback(); } catch {} throw error; }
 
-    await writeLog(pool, job, "Completed", "Completed", "Tenant database is ready.");
+    try { await writeLog(pool, job, "Completed", "Completed", "Tenant database is ready."); }
+    catch (logError) { console.error(`[${job.JobId}] completion log failed: ${logError.message}`); }
     console.log(`[${job.JobId}] completed.`);
   } catch (error) {
+    if (completed || error?.message === "PROVISIONING_LEASE_LOST" ||
+        error?.message?.includes("PROVISIONING_LEASE_LOST_BEFORE_COMPLETION")) {
+      console.error(`[${job.JobId}] lease lost; this worker will not change the job state.`);
+      return;
+    }
     const message = (error instanceof Error ? error.message : String(error)).slice(0, 2000);
     const failed = Number(job.AttemptCount) >= Number(job.MaxAttempts);
-    await pool.request()
+    const result = await pool.request()
       .input("jobId", sql.UniqueIdentifier, job.JobId)
+      .input("workerId", sql.NVarChar(200), workerId)
       .input("failed", sql.Bit, failed)
       .input("errorCode", sql.VarChar(80), "PROVISION_FAILED")
       .query(`
         UPDATE dbo.ProvisioningJobs
-        SET Status = CASE WHEN @failed = 1 THEN 'Failed' ELSE 'RetryScheduled' END,
-            RunAfter = DATEADD(minute, CASE WHEN AttemptCount < 2 THEN 1 WHEN AttemptCount < 4 THEN 5 ELSE 15 END, SYSUTCDATETIME()),
-            WorkerId = NULL, LockedUntil = NULL, LastErrorCode = @errorCode
-        WHERE JobId = @jobId;
+        SET Status=CASE WHEN @failed=1 THEN 'Failed' ELSE 'RetryScheduled' END,
+            RunAfter=DATEADD(minute, CASE WHEN AttemptCount<2 THEN 1 WHEN AttemptCount<4 THEN 5 ELSE 15 END, SYSUTCDATETIME()),
+            WorkerId=NULL, LockedUntil=NULL, LastErrorCode=@errorCode
+        WHERE JobId=@jobId AND WorkerId=@workerId AND Status='Running'
+          AND LockedUntil > SYSUTCDATETIME();
+        SELECT @@ROWCOUNT AS Affected;
       `);
-    await writeLog(pool, job, failed ? "Failed" : "Retrying",
-      failed ? "Failed" : "Retrying",
-      failed ? "Tenant database provisioning failed permanently." : "Tenant database provisioning failed; retry scheduled.",
-      message);
-    if (failed) {
-      await pool.request()
-        .input("tenantId", sql.BigInt, job.TenantId)
-        .query("UPDATE dbo.Tenants SET Status = N'Pending', UpdatedAt = SYSUTCDATETIME() WHERE TenantId = @tenantId AND Status = N'Pending';");
-    }
+    if (Number(result.recordset[0]?.Affected) === 1) {
+      try {
+        await writeLog(pool, job, failed ? "Failed" : "Retrying", failed ? "Failed" : "Retrying",
+          failed ? "Tenant database provisioning failed permanently." : "Tenant database provisioning failed; retry scheduled.", message);
+      } catch (logError) { console.error(`[${job.JobId}] failure log failed: ${logError.message}`); }
+      if (failed) await pool.request().input("tenantId", sql.BigInt, job.TenantId)
+        .query("UPDATE dbo.Tenants SET Status=N'Pending', UpdatedAt=SYSUTCDATETIME() WHERE TenantId=@tenantId AND Status=N'Pending';");
+    } else console.error(`[${job.JobId}] failure not recorded: this worker no longer owns the lease.`);
     console.error(`[${job.JobId}] ${failed ? "failed" : "retrying"}: ${message}`);
-  }
+  } finally { lease.stop(); }
 }
+const migration = await readFile(migrationPath, "utf8");
+const checksum = createHash("sha256").update(migration, "utf8").digest("hex");
 
 async function main() {
-  const migration = await readFile(migrationPath, "utf8");
-  const checksum = createHash("sha256").update(migration, "utf8").digest("hex");
   const pool = await connect(process.env.DB_NAME || "Repair_Master");
   try {
     do {
@@ -394,7 +487,7 @@ async function main() {
         await new Promise((resolve) => setTimeout(resolve, pollMs));
         continue;
       }
-      await processJob(pool, job, migration, checksum);
+      await processJob(pool, job);
     } while (!once);
   } finally {
     await pool.close();
