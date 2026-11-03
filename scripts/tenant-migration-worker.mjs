@@ -71,7 +71,7 @@ function splitBatches(script) {
 
 async function loadMigrations() {
   const files = (await readdir(migrationsDirectory, { withFileTypes: true }))
-    .filter((entry) => entry.isFile() && /^V(?:[2-9]|[1-9]\\d+)_[A-Za-z0-9_-]+\\.sql$/i.test(entry.name))
+    .filter((entry) => entry.isFile() && /^V(?:[2-9]|[1-9]\d+)_[A-Za-z0-9_-]+\.sql$/i.test(entry.name))
     .map((entry) => entry.name)
     .sort((a, b) => {
       const av = Number(a.match(/^V(\d+)/i)[1]);
