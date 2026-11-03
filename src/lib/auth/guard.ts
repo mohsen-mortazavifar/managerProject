@@ -75,10 +75,9 @@ export async function requireAuth(request: Request): Promise<AuthGuardResult> {
       "/api/auth/owner-password/set",
     ]);
 
-    // System administrators manage the platform independently of customer plans.
     // Tenant users can access account, onboarding status, plan catalogue and orders
-    // without an active subscription. Business APIs remain subscription-gated.
-    if (!isPlatformUser && !subscriptionExemptPaths.has(pathname) && !pathname.startsWith("/api/admin/")) {
+    // without an active subscription. Other protected APIs require an active subscription.
+    if (!subscriptionExemptPaths.has(pathname) && !pathname.startsWith("/api/admin/")) {
       // Apply subscription lifecycle transitions on demand before checking access:
       // expire ended subscriptions and activate a reserved subscription whose
       // scheduled start time has arrived. The transaction and row locks prevent
