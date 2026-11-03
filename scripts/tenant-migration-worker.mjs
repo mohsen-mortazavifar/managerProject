@@ -1,6 +1,6 @@
 import sql from "mssql";
 import { randomUUID } from "node:crypto";
-import { applyPendingMigrations, loadTenantMigrations } from "./lib/tenant-migrations.mjs";
+import { applyPendingMigrations, loadBaselineMigration, loadTenantMigrations } from "./lib/tenant-migrations.mjs";
 
 const workerId = `tenant-migration-worker-${randomUUID()}`;
 const pollMs = positiveInt(process.env.TENANT_MIGRATION_POLL_MS, 60000);
@@ -101,7 +101,8 @@ async function processTenant(masterPool, tenant, migrations) {
   const serverName = assertAllowedServer(tenant.ServerName);
   const pool = await new sql.ConnectionPool(tenantConfig(databaseName, serverName)).connect();
   try {
-    const latest = await applyPendingMigrations(pool, databaseName, migrations);
+    const baseline = await loadBaselineMigration();
+    const latest = await applyPendingMigrations(pool, databaseName, migrations, baseline.checksum);
     await updateMasterSchemaVersion(masterPool, tenant.TenantDatabaseId, tenant.TenantId, latest);
     return { databaseName, status: "success", latest };
   } finally {
