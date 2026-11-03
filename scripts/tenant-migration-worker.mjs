@@ -9,7 +9,6 @@ const migrationsDirectory = resolve(here, "../database/tenant-migrations");
 const workerId = `tenant-migration-worker-${randomUUID()}`;
 const pollMs = positiveInt(process.env.TENANT_MIGRATION_POLL_MS, 60000);
 const once = process.argv.includes("--once");
-const maxTenants = positiveInt(process.env.TENANT_MIGRATION_MAX_TENANTS_PER_CYCLE, 1000);
 
 function positiveInt(value, fallback) {
   const n = Number(value);
@@ -107,7 +106,7 @@ async function loadMigrations() {
 
 async function listTenantDatabases(masterPool) {
   const result = await masterPool.request().query(`
-    SELECT TOP (${maxTenants})
+    SELECT
       d.TenantDatabaseId, d.TenantId, d.DatabaseName, d.ServerName, d.SchemaVersion
     FROM dbo.TenantDatabases d
     INNER JOIN dbo.Tenants t ON t.TenantId = d.TenantId
