@@ -174,7 +174,7 @@ async function applyOneMigration(pool, databaseName, migration) {
   }
 }
 
-export async function applyPendingMigrations(pool, databaseName, migrations) {
+export async function applyPendingMigrations(pool, databaseName, migrations, baselineChecksum) {
   await ensureMigrationLedger(pool);
   const baseline = await pool.request()
     .input("version", sql.NVarChar(50), baselineVersion)
@@ -183,8 +183,36 @@ export async function applyPendingMigrations(pool, databaseName, migrations) {
       FROM dbo.__SchemaVersions
       WHERE Version=@version;
     `);
-  if (!baseline.recordset[0]?.Checksum) {
+  const baselineRow = baseline.recordset[0];
+  if (!baselineRow?.Checksum) {
     throw new Error("INITIAL_SCHEMA_NOT_VERIFIED: V1_InitialSchema is missing or has no checksum.");
+  }
+  if (!baselineChecksum || String(baselineRow.Checksum).toLowerCase() !== baselineChecksum.toLowerCase()) {
+    throw new Error("MIGRATION_CHECKSUM_MISMATCH: V1_InitialSchema does not match the released baseline.");
+  }
+
+  // Validate the existing ledger as a contiguous prefix before applying anything.
+  const before = await pool.request().query(`
+    SELECT Version, Checksum FROM dbo.__SchemaVersions ORDER BY MigrationId ASC;
+  `);
+  const expected = [baselineVersion, ...migrations.map((item) => item.version)];
+  if (before.recordset.length > expected.length) {
+    throw new Error("TENANT_MIGRATION_LEDGER_DIVERGED: database is ahead of this release.");
+  }
+  const checksumByVersion = new Map([
+    [baselineVersion, baselineChecksum],
+    ...migrations.map((item) => [item.version, item.checksum]),
+  ]);
+  for (let i = 0; i < before.recordset.length; i++) {
+    const row = before.recordset[i];
+    if (row.Version !== expected[i]) {
+      throw new Error(`TENANT_MIGRATION_LEDGER_ORDER_INVALID: expected ${expected[i]}, found ${row.Version}`);
+    }
+    const expectedChecksum = checksumByVersion.get(row.Version);
+    if (!row.Checksum) throw new Error(`MIGRATION_CHECKSUM_MISSING: ${row.Version}`);
+    if (String(row.Checksum).toLowerCase() !== expectedChecksum.toLowerCase()) {
+      throw new Error(`MIGRATION_CHECKSUM_MISMATCH: ${row.Version}`);
+    }
   }
 
   for (const migration of migrations) {
@@ -195,7 +223,6 @@ export async function applyPendingMigrations(pool, databaseName, migrations) {
   const ledger = await pool.request().query(`
     SELECT Version, Checksum FROM dbo.__SchemaVersions ORDER BY MigrationId ASC;
   `);
-  const expected = [baselineVersion, ...migrations.map((item) => item.version)];
   if (ledger.recordset.length !== expected.length) {
     throw new Error("TENANT_MIGRATION_LEDGER_DIVERGED: database contains a version not present in this release.");
   }
