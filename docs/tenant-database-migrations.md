@@ -33,7 +33,6 @@ Environment variables use the existing SQL connection settings: `DB_SERVER`, `DB
 
 Optional settings:
 - `TENANT_MIGRATION_POLL_MS` (default `60000`)
-- `TENANT_MIGRATION_MAX_TENANTS_PER_CYCLE` (default `1000`)
 
 The worker only selects active tenant databases whose tenant status is Active and whose database name matches the platform naming rule. It checks the configured SQL Server allow-list before connecting. Each tenant migration is protected by a SQL Server application lock, so two worker instances cannot apply the same migration simultaneously. A failure for one tenant is logged and does not stop processing other tenants.
 
