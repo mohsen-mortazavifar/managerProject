@@ -21,8 +21,6 @@ export async function requireAuth(request: Request): Promise<AuthGuardResult> {
   }
 
   try {
-    // Re-check the account on every protected request so disabled/deleted users
-    // do not retain access until the JWT expires.
     const pool = await getSqlPool();
     const tokenHash = hashAccessToken(bearerToken);
     const revoked = await pool.request()
@@ -66,8 +64,8 @@ export async function requireAuth(request: Request): Promise<AuthGuardResult> {
     const isPlatformUser = Boolean(user.IsPlatformUser) || isSystemAdmin;
     const pathname = new URL(request.url).pathname;
 
-    // Only owner workspace users may use these routes without an active plan.
-    // Platform administrators must have an active subscription too.
+    // Owners may reach only the subscription and account-recovery flow without
+    // an active plan. Require one unambiguous active owner tenant.
     const ownerSubscriptionExemptPaths = new Set([
       "/api/auth/me",
       "/api/auth/logout",
@@ -78,17 +76,22 @@ export async function requireAuth(request: Request): Promise<AuthGuardResult> {
     ]);
     const alwaysExemptPaths = new Set(["/api/auth/logout"]);
     let mayUseOwnerSubscriptionFlow = false;
+
     if (!isPlatformUser && ownerSubscriptionExemptPaths.has(pathname)) {
       const ownerMembership = await pool.request()
         .input("userId", sql.BigInt, user.UserId)
         .query(`
-          SELECT TOP (1) 1 AS IsOwner
-          FROM dbo.TenantUsers
-          WHERE UserId = @userId
-            AND IsOwner = 1
-            AND IsActive = 1;
+          SELECT TOP (2) t.TenantId
+          FROM dbo.TenantUsers tu
+          INNER JOIN dbo.Tenants t ON t.TenantId = tu.TenantId
+          WHERE tu.UserId = @userId
+            AND tu.IsOwner = 1
+            AND tu.IsActive = 1
+            AND t.DeletedAt IS NULL
+            AND t.Status IN (N'Active', N'Pending')
+          ORDER BY t.TenantId;
         `);
-      mayUseOwnerSubscriptionFlow = ownerMembership.recordset.length > 0;
+      mayUseOwnerSubscriptionFlow = ownerMembership.recordset.length === 1;
     }
 
     if (!alwaysExemptPaths.has(pathname) && !mayUseOwnerSubscriptionFlow) {
