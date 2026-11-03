@@ -396,7 +396,7 @@ async function applyInitialMigration(name, serverName, script, migrationChecksum
     }
     const batches = splitBatches(script);
     const versionRegistrationBatches = batches.filter((batch) =>
-      /INSERT\\s+INTO\\s+dbo\\.__SchemaVersions/i.test(batch) &&
+      /INSERT\s+INTO\s+dbo\.__SchemaVersions/i.test(batch) &&
       /V1_InitialSchema/i.test(batch)
     );
     if (versionRegistrationBatches.length !== 1) {
