@@ -1,5 +1,5 @@
 import sql from "mssql";
-import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
 import { applyInitialMigration, applyPendingMigrations, loadBaselineMigration, loadTenantMigrations } from "./lib/tenant-migrations.mjs";
 
 const workerId = `${process.env.PROVISIONING_WORKER_ID || "worker"}-${randomUUID()}`;
