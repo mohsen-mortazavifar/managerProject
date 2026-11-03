@@ -9,7 +9,7 @@ const migrationPath = resolve(here, "../database/tenant-migrations/V1_InitialSch
 const workerId = `${process.env.PROVISIONING_WORKER_ID || "worker"}-${randomUUID()}`;
 const pollMs = positiveInt(process.env.PROVISIONING_POLL_MS, 5000);
 const leaseSeconds = positiveInt(process.env.PROVISIONING_LEASE_SECONDS, 300);
-const heartbeatMs = positiveInt(process.env.PROVISIONING_HEARTBEAT_MS, Math.max(1000, Math.floor(leaseSeconds * 1000 / 3)));
+const heartbeatMs = positiveInt(process.env.PROVISIONING_HEARTBEAT_MS, Math.min(60000, Math.max(1000, Math.floor(leaseSeconds * 1000 / 3))));
 const once = process.argv.includes("--once");
 
 function positiveInt(value, fallback) {
