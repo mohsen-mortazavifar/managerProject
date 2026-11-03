@@ -30,10 +30,15 @@ export default function WorkspacePage() {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       });
-      const meData = await meResponse.json() as { user?: { isPlatformUser?: boolean } };
+      const meData = await meResponse.json() as { user?: { isPlatformUser?: boolean }; code?: string };
       if (meResponse.status === 401) {
         sessionStorage.removeItem("repairMasterAccessToken");
         router.replace("/owner-login");
+        return;
+      }
+      if (meResponse.status === 403 && meData.code === "SUBSCRIPTION_REQUIRED") {
+        sessionStorage.removeItem("repairMasterAccessToken");
+        router.replace("/login");
         return;
       }
       if (meResponse.ok && meData.user?.isPlatformUser) {
