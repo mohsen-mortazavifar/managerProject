@@ -81,7 +81,13 @@ async function loadMigrations() {
 
   const migrations = [];
   const seenVersions = new Set();
+  let expectedNumber = 2;
   for (const file of files) {
+    const number = Number(file.match(/^V(\\d+)/i)[1]);
+    if (number !== expectedNumber) {
+      throw new Error(`TENANT_MIGRATION_SEQUENCE_GAP: expected V${expectedNumber}, found ${file}`);
+    }
+    expectedNumber++;
     const version = file.replace(/\.sql$/i, "");
     if (seenVersions.has(version)) throw new Error(`DUPLICATE_MIGRATION_VERSION: ${version}`);
     seenVersions.add(version);
