@@ -365,7 +365,7 @@ async function processJob(pool, job) {
     let latestSchemaVersion;
     try {
       await applyInitialMigration(tenantPool, databaseName, baseline.content, baseline.checksum);
-      latestSchemaVersion = await applyPendingMigrations(tenantPool, databaseName, migrations);
+      latestSchemaVersion = await applyPendingMigrations(tenantPool, databaseName, migrations, baseline.checksum);
     } finally {
       await tenantPool.close();
     }
