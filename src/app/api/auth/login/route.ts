@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getSqlPool, sql } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth/password";
 import { createAccessToken, JWT_TTL_SECONDS } from "@/lib/auth/jwt";
-import { hasActiveSubscriptionForUser } from "@/lib/auth/subscription";
 import {
   checkLoginRateLimit,
   getLoginClientIp,
@@ -84,20 +83,6 @@ export async function POST(request: Request) {
       await recordLoginAttempt(normalizedEmail, clientIp, false, request);
       return NextResponse.json(
         { error: "این حساب اجازه ورود به پنل اصلی را ندارد." },
-        { status: 403, headers: { "Cache-Control": "no-store" } },
-      );
-    }
-
-    // A platform administrator is also required to have a current subscription
-    // before an access token can be issued.
-    const hasSubscription = await hasActiveSubscriptionForUser(String(user.UserId));
-    if (!hasSubscription) {
-      await recordLoginAttempt(normalizedEmail, clientIp, false, request);
-      return NextResponse.json(
-        {
-          error: "اشتراک فعال ندارید یا اعتبار آن به پایان رسیده است.",
-          code: "SUBSCRIPTION_REQUIRED",
-        },
         { status: 403, headers: { "Cache-Control": "no-store" } },
       );
     }
