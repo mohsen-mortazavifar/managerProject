@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getSqlPool, sql } from "@/lib/db";
 import { createAccessToken, JWT_TTL_SECONDS } from "@/lib/auth/jwt";
+import { hasActiveSubscriptionForUser } from "@/lib/auth/subscription";
 import { normalizeMobile, safeCompareOtpHash } from "@/lib/auth/otp";
 
 export const runtime = "nodejs";
@@ -194,7 +195,15 @@ export async function POST(request: Request) {
           await tx.commit();
           return respond({ error: "همکاران باید با شماره موبایل و رمز عبور وارد شوند. اگر رمز ندارید، از مالک کسب‌وکار بخواهید آن را تعیین کند." }, 403);
         }
-        const user = { userId: String(userRow.UserId), email: String(userRow.Email || ""), fullName: String(userRow.FullName), isSystemAdmin: false, isPlatformUser: Boolean(userRow.IsPlatformUser) };
+        const isPlatformUser = Boolean(userRow.IsPlatformUser);
+        if (isPlatformUser && !(await hasActiveSubscriptionForUser(String(userRow.UserId)))) {
+          await tx.commit();
+          return respond({
+            error: "اشتراک فعال ندارید یا اعتبار آن به پایان رسیده است.",
+            code: "SUBSCRIPTION_REQUIRED",
+          }, 403);
+        }
+        const user = { userId: String(userRow.UserId), email: String(userRow.Email || ""), fullName: String(userRow.FullName), isSystemAdmin: false, isPlatformUser };
         const accessToken = createAccessToken(user);
         await new sql.Request(tx).input("userId", sql.BigInt, userRow.UserId)
           .query("UPDATE dbo.Users SET MobileVerifiedAt = COALESCE(MobileVerifiedAt, SYSUTCDATETIME()), LastLoginAt = SYSUTCDATETIME() WHERE UserId = @userId;");
