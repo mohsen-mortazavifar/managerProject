@@ -705,8 +705,17 @@ ON t.EventCode = s.EventCode
 WHEN NOT MATCHED THEN INSERT(EventCode, IsSmsEnabled, TemplateCode)
     VALUES(s.EventCode, s.IsSmsEnabled, s.TemplateCode);
 
--- The provisioning worker records V1_InitialSchema only after every batch succeeds.
+-- Schema Version
+IF NOT EXISTS (SELECT 1 FROM dbo.__SchemaVersions WHERE Version = 'V1_InitialSchema')
+    INSERT INTO dbo.__SchemaVersions (Version, Description, Checksum)
+    VALUES ('V1_InitialSchema', N'اسکیمای اولیه', NULL);
 GO
+
+
+
+
+
+
 /* Reminder worker columns, status constraint and lease index are defined in the initial table schema. */
 
 
