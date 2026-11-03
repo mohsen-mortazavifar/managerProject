@@ -77,8 +77,19 @@ export async function requireAuth(request: Request): Promise<AuthGuardResult> {
       "/api/auth/owner-password/set",
     ]);
     const alwaysExemptPaths = new Set(["/api/auth/logout"]);
-    const mayUseOwnerSubscriptionFlow =
-      !isPlatformUser && ownerSubscriptionExemptPaths.has(pathname);
+    let mayUseOwnerSubscriptionFlow = false;
+    if (!isPlatformUser && ownerSubscriptionExemptPaths.has(pathname)) {
+      const ownerMembership = await pool.request()
+        .input("userId", sql.BigInt, user.UserId)
+        .query(`
+          SELECT TOP (1) 1 AS IsOwner
+          FROM dbo.TenantUsers
+          WHERE UserId = @userId
+            AND IsOwner = 1
+            AND IsActive = 1;
+        `);
+      mayUseOwnerSubscriptionFlow = ownerMembership.recordset.length > 0;
+    }
 
     if (!alwaysExemptPaths.has(pathname) && !mayUseOwnerSubscriptionFlow) {
       const hasSubscription = await hasActiveSubscriptionForUser(String(user.UserId));
