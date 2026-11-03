@@ -394,7 +394,21 @@ async function applyInitialMigration(name, serverName, script, migrationChecksum
       await tx.commit();
       return;
     }
-    for (const batch of splitBatches(script)) await new sql.Request(tx).batch(batch);
+    const batches = splitBatches(script);
+    const versionRegistrationBatches = batches.filter((batch) =>
+      /INSERT\\s+INTO\\s+dbo\\.__SchemaVersions/i.test(batch) &&
+      /V1_InitialSchema/i.test(batch)
+    );
+    if (versionRegistrationBatches.length !== 1) {
+      throw new Error("INITIAL_MIGRATION_VERSION_MARKER_NOT_FOUND_OR_AMBIGUOUS");
+    }
+    // V1 is an immutable, historical migration. Its embedded legacy marker is
+    // deliberately skipped so the worker can record the version only after
+    // every schema batch has succeeded in this transaction.
+    for (const batch of batches) {
+      if (versionRegistrationBatches.includes(batch)) continue;
+      await new sql.Request(tx).batch(batch);
+    }
     await new sql.Request(tx)
       .input("version", sql.NVarChar(50), "V1_InitialSchema")
       .input("checksum", sql.NVarChar(128), migrationChecksum)
