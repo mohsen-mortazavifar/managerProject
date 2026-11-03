@@ -354,3 +354,16 @@ a { color: inherit; text-decoration: none; }
 .users-member-actions select { min-width: 112px; max-width: 150px; height: 32px; padding: 0 8px; border: 1px solid #e5eaf2; border-radius: 7px; background: #fff; color: #44516a; font-size: 10px; }
 .users-member-actions select:disabled { opacity: .6; }
 @media (max-width: 760px) { .users-member-actions { align-items: stretch; flex-direction: column; min-width: 125px; } .users-member-actions select { max-width: none; width: 100%; } }
+
+
+/* Compact password confirmation and tenant-role controls */
+.users-invite-link input[type="password"] { height: 34px; min-height: 34px; padding: 0 10px; border: 1px solid #e0e6f0; border-radius: 7px; font-size: 12px; }
+.users-invite-link { gap: 7px; padding: 12px; }
+.users-invite-link label { font-size: 11px; }
+.users-password-mismatch { display: block; margin: -3px 0 4px; color: #b42318; font-size: 11px; }
+.users-role-select { width: 145px; max-width: 100%; height: 34px; padding: 0 8px; border: 1px solid #dfe6f2; border-radius: 8px; background: #fff; color: #34415a; font-size: 11px; }
+.auth-form textarea { width: 100%; min-height: 76px; resize: vertical; margin: 2px 0 8px; padding: 10px 12px; border: 1px solid #e1e6ef; border-radius: 9px; outline: none; background: #fcfdff; color: #26334a; font: inherit; font-size: 12px; }
+.auth-form textarea:focus { border-color: #7188ee; box-shadow: 0 0 0 3px #526ee719; }
+@media (max-width: 560px) { .users-role-select { width: 100%; min-width: 130px; } }
+
+.users-invite-link .users-primary, .users-invite-link .users-toggle { min-height: 32px; padding: 0 10px; font-size: 11px; }

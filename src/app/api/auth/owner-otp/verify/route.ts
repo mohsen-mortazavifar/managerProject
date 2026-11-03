@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getSqlPool, sql } from "@/lib/db";
 import { createAccessToken, JWT_TTL_SECONDS } from "@/lib/auth/jwt";
+import { hasActiveSubscriptionForUser } from "@/lib/auth/subscription";
 import { normalizeMobile, safeCompareOtpHash } from "@/lib/auth/otp";
 
 export const runtime = "nodejs";
@@ -28,13 +29,15 @@ export async function POST(request: Request) {
   try {
     const pool = await getSqlPool();
     const tx = new sql.Transaction(pool);
+   
     await tx.begin();
+     console.log(",,,,,,,,")
     try {
       const found = await new sql.Request(tx)
         .input("challengeId", sql.UniqueIdentifier, input.challengeId)
         .input("mobile", sql.NVarChar(40), mobile)
         .query(`
-          SELECT TOP (1) ChallengeId, Mobile, Purpose, FullName, BusinessName, OtpHash,
+          SELECT TOP (1) ChallengeId, Mobile, Purpose, FullName, BusinessName, BusinessAddress, BusinessPhone, OtpHash,
                  ExpiresAt, Attempts, MaxAttempts, ConsumedAt
           FROM dbo.OwnerOtpChallenges WITH (UPDLOCK, ROWLOCK)
           WHERE ChallengeId = @challengeId AND Mobile = @mobile;
@@ -63,7 +66,9 @@ export async function POST(request: Request) {
       if (challenge.Purpose === "register") {
         const fullName = String(challenge.FullName || "").trim();
         const businessName = String(challenge.BusinessName || "").trim();
-        if (!fullName || !businessName) throw new Error("OTP_REGISTRATION_DATA_MISSING");
+        const businessAddress = String(challenge.BusinessAddress || "").trim();
+        const businessPhone = String(challenge.BusinessPhone || "").trim();
+        if (!fullName || !businessName || !businessAddress || !businessPhone) throw new Error("OTP_REGISTRATION_DATA_MISSING");
 
         const exists = await new sql.Request(tx)
           .input("mobile", sql.NVarChar(40), mobile)
@@ -91,11 +96,15 @@ export async function POST(request: Request) {
           .input("name", sql.NVarChar(200), businessName)
           .input("code", sql.NVarChar(50), tenantCode)
           .input("mobile", sql.NVarChar(40), mobile)
+          .input("businessAddress", sql.NVarChar(500), businessAddress)
+          .input("businessPhone", sql.NVarChar(30), businessPhone)
           .query(`
+            DECLARE @InsertedTenants TABLE (TenantId BIGINT);
             INSERT INTO dbo.Tenants
-              (Name, Code, Status, ContactEmail, ContactMobile, CreatedAt, UpdatedAt)
-            OUTPUT INSERTED.TenantId
-            VALUES (@name, @code, N'Pending', NULL, @mobile, SYSUTCDATETIME(), SYSUTCDATETIME());
+              (Name, Code, Status, ContactEmail, ContactMobile, BusinessAddress, ContactPhone, CreatedAt, UpdatedAt)
+            OUTPUT INSERTED.TenantId INTO @InsertedTenants (TenantId)
+            VALUES (@name, @code, N'Pending', NULL, @mobile, @businessAddress, @businessPhone, SYSUTCDATETIME(), SYSUTCDATETIME());
+            SELECT TenantId FROM @InsertedTenants;
           `);
         const tenantId = tenantResult.recordset[0]?.TenantId;
         if (!tenantId) throw new Error("TENANT_INSERT_FAILED");
@@ -169,10 +178,6 @@ export async function POST(request: Request) {
           provisioning: { jobId: String(job.JobId), correlationId: String(job.CorrelationId), status: "Queued" },
         }, 201);
       }
-      console.log("[OTP ACCOUNT CHECK]", {
-        purpose: challenge.Purpose,
-        mobile,
-      });
       if (challenge.Purpose === "login") {
         const account = await new sql.Request(tx)
           .input("mobile", sql.NVarChar(40), mobile)
@@ -190,7 +195,15 @@ export async function POST(request: Request) {
           await tx.commit();
           return respond({ error: "همکاران باید با شماره موبایل و رمز عبور وارد شوند. اگر رمز ندارید، از مالک کسب‌وکار بخواهید آن را تعیین کند." }, 403);
         }
-        const user = { userId: String(userRow.UserId), email: String(userRow.Email || ""), fullName: String(userRow.FullName), isSystemAdmin: false, isPlatformUser: Boolean(userRow.IsPlatformUser) };
+        const isPlatformUser = Boolean(userRow.IsPlatformUser);
+        if (isPlatformUser && !(await hasActiveSubscriptionForUser(String(userRow.UserId)))) {
+          await tx.commit();
+          return respond({
+            error: "اشتراک فعال ندارید یا اعتبار آن به پایان رسیده است.",
+            code: "SUBSCRIPTION_REQUIRED",
+          }, 403);
+        }
+        const user = { userId: String(userRow.UserId), email: String(userRow.Email || ""), fullName: String(userRow.FullName), isSystemAdmin: false, isPlatformUser };
         const accessToken = createAccessToken(user);
         await new sql.Request(tx).input("userId", sql.BigInt, userRow.UserId)
           .query("UPDATE dbo.Users SET MobileVerifiedAt = COALESCE(MobileVerifiedAt, SYSUTCDATETIME()), LastLoginAt = SYSUTCDATETIME() WHERE UserId = @userId;");
@@ -204,6 +217,7 @@ export async function POST(request: Request) {
       throw error;
     }
   } catch {
+
     return respond({ error: "تأیید کد فعلاً در دسترس نیست." }, 503);
   }
 }

@@ -96,8 +96,5 @@ export async function POST(request: Request, context: Context) {
     return json({ tenantDatabaseId: String(row.TenantDatabaseId), tenantId: String(row.TenantId), databaseName, checkedAt: startedAt, connection, schema, backup });
   } catch {
     return json({ error: "اجرای بررسی دیتابیس ممکن نشد. تنظیمات اتصال و دسترسی حساب SQL Server را بررسی کنید." }, 503);
-  } finally {
-    if (tenantPool) await tenantPool.close().catch(() => undefined);
-    if (msdbPool) await msdbPool.close().catch(() => undefined);
   }
 }

@@ -5,6 +5,7 @@ import { verifyPassword } from "@/lib/auth/password";
 import { createAccessToken, JWT_TTL_SECONDS } from "@/lib/auth/jwt";
 import { normalizeMobile } from "@/lib/auth/otp";
 import { checkLoginRateLimit, getLoginClientIp, recordLoginAttempt } from "@/lib/auth/rate-limit";
+import { hasActiveSubscriptionForTenant } from "@/lib/auth/subscription";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,13 +30,13 @@ export async function POST(request: Request) {
 
   const input = body as { mobile?: unknown; password?: unknown };
   if (typeof input.mobile !== "string" || typeof input.password !== "string" ||
-      input.password.length < 1 || input.password.length > 1024) {
+    input.password.length < 1 || input.password.length > 1024) {
     return respond({ error: "Invalid credentials." }, 400);
   }
 
   let mobile: string;
   try { mobile = normalizeMobile(input.mobile); } catch {
-    return respond({ error: "Mobile or password is incorrect." }, 401);
+    return respond({ error: "موبایل یا پسورد اشتباه است." }, 401);
   }
   const ip = getLoginClientIp(request);
 
@@ -51,9 +52,9 @@ export async function POST(request: Request) {
     const user = result.recordset[0];
     const valid = user?.PasswordHash ? await verifyPassword(input.password, String(user.PasswordHash)) : false;
     if (!user || !valid || !Boolean(user.IsActive) || !user.MobileVerifiedAt ||
-        Boolean(user.IsSystemAdmin) || Boolean(user.IsPlatformUser)) {
+      Boolean(user.IsSystemAdmin) || Boolean(user.IsPlatformUser)) {
       await recordLoginAttempt(mobile, ip, false, request);
-      return respond({ error: "Mobile or password is incorrect." }, 401);
+      return respond({ error: "موبایل یا پسورد اشتباه است." }, 401);
     }
 
     const found = await pool.request().input("userId", sql.BigInt, user.UserId).query(`
@@ -76,13 +77,22 @@ export async function POST(request: Request) {
     `);
     if (found.recordset.length === 0) {
       await recordLoginAttempt(mobile, ip, false, request);
-      return respond({ error: "No active business database is assigned to this account." }, 403);
+      return respond({ error: "بانک اطلاعاتی فعالی برای این کسب و کار موجود نیست." }, 403);
     }
     if (found.recordset.length > 1) {
       return respond({ error: "Multiple active businesses require explicit selection.", code: "MULTIPLE_ACTIVE_TENANTS" }, 409);
     }
 
     const m = found.recordset[0];
+    const subscriptionIsActive = await hasActiveSubscriptionForTenant(m.TenantId);
+    if (!subscriptionIsActive) {
+      await recordLoginAttempt(mobile, ip, false, request);
+      return respond({
+        error: "اشتراک شما به پایان رسیده است لطفا نسبت به تهیه و فعال سازی اشتراک  اقدام فرمائید.",
+        code: "SUBSCRIPTION_REQUIRED",
+      }, 403);
+    }
+
     if (!String(m.DatabaseName ?? "").trim() || !String(m.ServerName ?? "").trim()) {
       return respond({ error: "Business database configuration is incomplete." }, 503);
     }
@@ -105,6 +115,6 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("Repair integration login failed", error);
-    return respond({ error: "Master authentication is temporarily unavailable." }, 503);
+    return respond({ error: "فرآیند احراز هویت موقتا در دسترس نیست." }, 503);
   }
 }

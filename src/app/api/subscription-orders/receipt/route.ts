@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     const bytes = Buffer.from(await file.arrayBuffer());
     // Check file signatures so a renamed file cannot bypass the type check.
     const isPdf = bytes.subarray(0, 5).toString("ascii") === "%PDF-";
-    const isPng = bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
+    const isPng = bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
     const isJpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
     const isWebp = bytes.length >= 12 && bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP";
     if (!(isPdf || isPng || isJpeg || isWebp)) return fail("محتوای فایل با فرمت مجاز مطابقت ندارد.", 415);
@@ -57,13 +57,28 @@ export async function POST(request: Request) {
       .input("contentType", sql.NVarChar(100), verifiedContentType)
       .input("note", sql.NVarChar(500), note || null)
       .query(`
-        UPDATE pt
-        SET ReceiptData=@data,ReceiptFileName=@fileName,ReceiptContentType=@contentType,
-            ReceiptUploadedAt=SYSUTCDATETIME(),ReceiptNote=@note
-        OUTPUT INSERTED.PaymentTransactionId
-        FROM dbo.PaymentTransactions pt
-        WHERE pt.PaymentTransactionId=@paymentId AND pt.TenantId=@tenantId
-          AND pt.Status=N'Pending' AND pt.Gateway=N'Manual';
+         DECLARE @UpdatedPayments TABLE (
+      PaymentTransactionId BIGINT
+    );
+
+    UPDATE pt
+    SET
+      ReceiptData = @data,
+      ReceiptFileName = @fileName,
+      ReceiptContentType = @contentType,
+      ReceiptUploadedAt = SYSUTCDATETIME(),
+      ReceiptNote = @note
+    OUTPUT INSERTED.PaymentTransactionId
+      INTO @UpdatedPayments (PaymentTransactionId)
+    FROM dbo.PaymentTransactions AS pt
+    WHERE
+      pt.PaymentTransactionId = @paymentId
+      AND pt.TenantId = @tenantId
+      AND pt.Status = N'Pending'
+      AND pt.Gateway = N'Manual';
+
+    SELECT PaymentTransactionId
+    FROM @UpdatedPayments;
       `);
     if (result.recordset.length === 0) return fail("پرداخت پیدا نشد، قبلاً بررسی شده یا امکان ارسال رسید برای آن وجود ندارد.", 409);
     return NextResponse.json({ message: "رسید با موفقیت ارسال شد.", paymentTransactionId: String(result.recordset[0].PaymentTransactionId) }, { headers: { "Cache-Control": "no-store" } });

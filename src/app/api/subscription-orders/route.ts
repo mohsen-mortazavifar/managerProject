@@ -25,6 +25,9 @@ export async function GET(request:Request){
  try{
   const pool=await getSqlPool(),tenant=await getOwnerTenant(auth.user.userId);
   if(!tenant)return fail("برای این حساب، کسب‌وکار مالکیت‌شده‌ای پیدا نشد.",403);
+  // Subscription state transitions are handled by scripts/subscription-worker.mjs.
+  // This endpoint only reads the current state.
+
   const r=await pool.request().input("tenantId",sql.BigInt,tenant.TenantId).query(`
    SELECT s.SubscriptionId,s.Status,s.StartsAt,s.EndsAt,s.PriceAtSubscription,s.CreatedAt,
           p.Name AS PlanName,p.MaxBranches,p.MaxUsers,p.MaxSmsPerMonth,

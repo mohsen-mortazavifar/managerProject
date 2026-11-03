@@ -1,7 +1,9 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getSqlPool, sql } from "@/lib/db";
 import { normalizeMobile, safeCompareOtpHash } from "@/lib/auth/otp";
+import { hashPassword } from "@/lib/auth/password";
+import { getTenantSecurityRoles, syncTenantSecurityUser } from "@/lib/tenant-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,7 +53,7 @@ export async function POST(request: Request) {
         .query("UPDATE dbo.WorkspaceInviteOtpChallenges SET ConsumedAt = SYSUTCDATETIME() WHERE ChallengeId = @challengeId;");
 
       let userResult = await new sql.Request(tx).input("mobile", sql.NVarChar(40), mobile)
-        .query("SELECT TOP (1) UserId, IsActive, DeletedAt FROM dbo.Users WITH (UPDLOCK, HOLDLOCK) WHERE Mobile = @mobile;");
+        .query("SELECT TOP (1) UserId, IsActive, DeletedAt, PasswordHash, FullName, Mobile FROM dbo.Users WITH (UPDLOCK, HOLDLOCK) WHERE Mobile = @mobile;");
       let user = userResult.recordset[0];
       if (user && (user.DeletedAt || !Boolean(user.IsActive))) {
         await tx.rollback(); return json({ error: "حساب این شماره غیرفعال است؛ با مدیر سیستم تماس بگیرید." }, 403);
@@ -95,15 +97,32 @@ export async function POST(request: Request) {
           `);
         tenantUserId = String(membership.recordset[0].TenantUserId);
       }
-      const role = await new sql.Request(tx).input("roleName", sql.NVarChar(200), row.RoleName)
+      const tenantRoles = await getTenantSecurityRoles(row.TenantId);
+      const selectedRole = tenantRoles.find((role) => role.name === String(row.RoleName));
+      if (!selectedRole) throw new Error("INVITATION_ROLE_MISSING");
+
+      const masterRoleName = selectedRole.name === "Administrator" ? "TenantManager" : "TenantUser";
+      const role = await new sql.Request(tx).input("roleName", sql.NVarChar(200), masterRoleName)
         .query("SELECT TOP (1) RoleId FROM dbo.Roles WHERE Name = @roleName AND IsSystemRole = 1;");
-      const roleId = role.recordset[0]?.RoleId;
-      if (!roleId) throw new Error("INVITATION_ROLE_MISSING");
-      await new sql.Request(tx).input("tenantUserId", sql.BigInt, tenantUserId).input("roleId", sql.BigInt, roleId)
+      const masterRoleId = role.recordset[0]?.RoleId;
+      if (!masterRoleId) throw new Error("MASTER_MEMBERSHIP_ROLE_MISSING");
+      await new sql.Request(tx).input("tenantUserId", sql.BigInt, tenantUserId).input("roleId", sql.BigInt, masterRoleId)
         .query(`
           DELETE FROM dbo.UserRoles WHERE TenantUserId = @tenantUserId;
           INSERT INTO dbo.UserRoles (TenantUserId, RoleId, AssignedAt) VALUES (@tenantUserId, @roleId, SYSUTCDATETIME());
         `);
+
+      const tenantPasswordHash = String(user.PasswordHash || "") || await hashPassword(randomUUID());
+      await syncTenantSecurityUser({
+        tenantId: row.TenantId,
+        masterUserId: user.UserId,
+        userName: mobile,
+        displayName: String(row.FullName || mobile).slice(0, 150),
+        passwordHash: tenantPasswordHash,
+        roleId: selectedRole.roleId,
+        isActive: true,
+      });
+
       await new sql.Request(tx).input("invitationId", sql.UniqueIdentifier, row.InvitationId)
         .query("UPDATE dbo.WorkspaceInvitations SET AcceptedAt = SYSUTCDATETIME() WHERE InvitationId = @invitationId AND AcceptedAt IS NULL AND RevokedAt IS NULL;");
       await tx.commit();
