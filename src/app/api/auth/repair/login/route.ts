@@ -5,6 +5,7 @@ import { verifyPassword } from "@/lib/auth/password";
 import { createAccessToken, JWT_TTL_SECONDS } from "@/lib/auth/jwt";
 import { normalizeMobile } from "@/lib/auth/otp";
 import { checkLoginRateLimit, getLoginClientIp, recordLoginAttempt } from "@/lib/auth/rate-limit";
+import { hasActiveSubscriptionForTenant } from "@/lib/auth/subscription";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -83,6 +84,15 @@ export async function POST(request: Request) {
     }
 
     const m = found.recordset[0];
+    const subscriptionIsActive = await hasActiveSubscriptionForTenant(m.TenantId);
+    if (!subscriptionIsActive) {
+      await recordLoginAttempt(mobile, ip, false, request);
+      return respond({
+        error: "An active subscription is required to access the Repair application.",
+        code: "SUBSCRIPTION_REQUIRED",
+      }, 403);
+    }
+
     if (!String(m.DatabaseName ?? "").trim() || !String(m.ServerName ?? "").trim()) {
       return respond({ error: "Business database configuration is incomplete." }, 503);
     }
