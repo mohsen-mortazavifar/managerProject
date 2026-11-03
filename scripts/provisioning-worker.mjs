@@ -302,26 +302,45 @@ async function provisionTenantSqlCredentials(masterPool, databaseName, job, serv
         await tenant.request().query(`CREATE USER ${login} FOR LOGIN ${login};`);
       }
       await tenant.request().query(`
-        IF NOT EXISTS (
+        IF DATABASE_PRINCIPAL_ID(N'tenant_app_runtime') IS NULL
+          CREATE ROLE [tenant_app_runtime];
+
+        IF EXISTS (
           SELECT 1 FROM sys.database_role_members rm
           JOIN sys.database_principals rolep ON rolep.principal_id = rm.role_principal_id
           JOIN sys.database_principals memberp ON memberp.principal_id = rm.member_principal_id
           WHERE rolep.name = N'db_datareader' AND memberp.name = ${quoteSqlLiteral(loginName)}
-        ) ALTER ROLE [db_datareader] ADD MEMBER ${login};
+        ) ALTER ROLE [db_datareader] DROP MEMBER ${login};
+
+        IF EXISTS (
+          SELECT 1 FROM sys.database_role_members rm
+          JOIN sys.database_principals rolep ON rolep.principal_id = rm.role_principal_id
+          JOIN sys.database_principals memberp ON memberp.principal_id = rm.member_principal_id
+          WHERE rolep.name = N'db_datawriter' AND memberp.name = ${quoteSqlLiteral(loginName)}
+        ) ALTER ROLE [db_datawriter] DROP MEMBER ${login};
 
         IF NOT EXISTS (
           SELECT 1 FROM sys.database_role_members rm
           JOIN sys.database_principals rolep ON rolep.principal_id = rm.role_principal_id
           JOIN sys.database_principals memberp ON memberp.principal_id = rm.member_principal_id
-          WHERE rolep.name = N'db_datawriter' AND memberp.name = ${quoteSqlLiteral(loginName)}
-        ) ALTER ROLE [db_datawriter] ADD MEMBER ${login};
+          WHERE rolep.name = N'tenant_app_runtime' AND memberp.name = ${quoteSqlLiteral(loginName)}
+        ) ALTER ROLE [tenant_app_runtime] ADD MEMBER ${login};
 
-        GRANT EXECUTE ON SCHEMA::[core] TO ${login};
-        GRANT EXECUTE ON SCHEMA::[crm] TO ${login};
-        GRANT EXECUTE ON SCHEMA::[repair] TO ${login};
-        GRANT EXECUTE ON SCHEMA::[inventory] TO ${login};
-        GRANT EXECUTE ON SCHEMA::[files] TO ${login};
-        GRANT EXECUTE ON SCHEMA::[notification] TO ${login};
+        GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::[core] TO [tenant_app_runtime];
+        GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::[crm] TO [tenant_app_runtime];
+        GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::[repair] TO [tenant_app_runtime];
+        GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::[inventory] TO [tenant_app_runtime];
+        GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::[files] TO [tenant_app_runtime];
+        GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::[notification] TO [tenant_app_runtime];
+        GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::[security] TO [tenant_app_runtime];
+
+        GRANT EXECUTE ON SCHEMA::[core] TO [tenant_app_runtime];
+        GRANT EXECUTE ON SCHEMA::[crm] TO [tenant_app_runtime];
+        GRANT EXECUTE ON SCHEMA::[repair] TO [tenant_app_runtime];
+        GRANT EXECUTE ON SCHEMA::[inventory] TO [tenant_app_runtime];
+        GRANT EXECUTE ON SCHEMA::[files] TO [tenant_app_runtime];
+        GRANT EXECUTE ON SCHEMA::[notification] TO [tenant_app_runtime];
+        GRANT EXECUTE ON SCHEMA::[security] TO [tenant_app_runtime];
       `);
     } finally {
       await tenant.close();
