@@ -1,11 +1,7 @@
 import sql from "mssql";
-import { createHash, randomUUID } from "node:crypto";
-import { readFile, readdir } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
+import { applyPendingMigrations, loadTenantMigrations } from "./lib/tenant-migrations.mjs";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const migrationsDirectory = resolve(here, "../database/tenant-migrations");
 const workerId = `tenant-migration-worker-${randomUUID()}`;
 const pollMs = positiveInt(process.env.TENANT_MIGRATION_POLL_MS, 60000);
 const once = process.argv.includes("--once");
@@ -61,49 +57,6 @@ function masterConfig() {
   };
 }
 
-function splitBatches(script) {
-  return script.replace(/^\uFEFF/, "")
-    .split(/^\s*GO\s*(?:--.*)?$/gim)
-    .map((batch) => batch.trim())
-    .filter(Boolean);
-}
-
-async function loadMigrations() {
-  const files = (await readdir(migrationsDirectory, { withFileTypes: true }))
-    .filter((entry) => entry.isFile() && /^V(?:[2-9]|[1-9]\d+)_[A-Za-z0-9_-]+\.sql$/i.test(entry.name))
-    .map((entry) => entry.name)
-    .sort((a, b) => {
-      const av = Number(a.match(/^V(\d+)/i)[1]);
-      const bv = Number(b.match(/^V(\d+)/i)[1]);
-      return av - bv || a.localeCompare(b);
-    });
-
-  const migrations = [];
-  const seenVersions = new Set();
-  let expectedNumber = 2;
-  for (const file of files) {
-    const number = Number(file.match(/^V(\d+)/i)[1]);
-    if (number !== expectedNumber) {
-      throw new Error(`TENANT_MIGRATION_SEQUENCE_GAP: expected V${expectedNumber}, found ${file}`);
-    }
-    expectedNumber++;
-    const version = file.replace(/\.sql$/i, "");
-    if (seenVersions.has(version)) throw new Error(`DUPLICATE_MIGRATION_VERSION: ${version}`);
-    seenVersions.add(version);
-    const content = await readFile(resolve(migrationsDirectory, file), "utf8");
-    if (/^\s*USE\s+|\bCREATE\s+DATABASE\b|\bALTER\s+DATABASE\b|\bBEGIN\s+TRAN(?:SACTION)?\b|\bCOMMIT\s+TRAN(?:SACTION)?\b|\bROLLBACK\s+TRAN(?:SACTION)?\b/im.test(content)) {
-      throw new Error(`MIGRATION_CONTAINS_FORBIDDEN_TRANSACTION_OR_DATABASE_COMMAND: ${file}`);
-    }
-    migrations.push({
-      version,
-      description: `Tenant database migration ${version}`,
-      checksum: createHash("sha256").update(content, "utf8").digest("hex"),
-      batches: splitBatches(content),
-    });
-  }
-  return migrations;
-}
-
 async function listTenantDatabases(masterPool) {
   const result = await masterPool.request().query(`
     SELECT
@@ -130,67 +83,6 @@ function assertAllowedServer(serverName) {
   return server;
 }
 
-async function ensureMigrationLedger(pool) {
-  await pool.request().query(`
-    IF OBJECT_ID(N'dbo.__SchemaVersions', N'U') IS NULL
-      THROW 52001, 'TENANT_SCHEMA_VERSION_TABLE_MISSING; initial provisioning must complete first.', 1;
-    IF COL_LENGTH(N'dbo.__SchemaVersions', N'Version') IS NULL
-       OR COL_LENGTH(N'dbo.__SchemaVersions', N'Checksum') IS NULL
-       OR COL_LENGTH(N'dbo.__SchemaVersions', N'AppliedAt') IS NULL
-      THROW 52002, 'TENANT_SCHEMA_VERSION_TABLE_INCOMPATIBLE.', 1;
-  `);
-}
-
-async function applyMigration(pool, databaseName, migration) {
-  const tx = new sql.Transaction(pool);
-  await tx.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
-  try {
-    await new sql.Request(tx)
-      .input("resource", sql.NVarChar(255), `tenant-schema-migration:${databaseName}`)
-      .query(`
-        DECLARE @lockResult int;
-        EXEC @lockResult = sys.sp_getapplock
-          @Resource=@resource, @LockMode='Exclusive', @LockOwner='Transaction', @LockTimeout=60000;
-        IF @lockResult < 0 THROW 52003, 'TENANT_MIGRATION_LOCK_FAILED.', 1;
-      `);
-
-    const found = await new sql.Request(tx)
-      .input("version", sql.NVarChar(50), migration.version)
-      .query(`
-        SELECT TOP(1) Version, Checksum
-        FROM dbo.__SchemaVersions WITH (UPDLOCK, HOLDLOCK)
-        WHERE Version=@version;
-      `);
-    const applied = found.recordset[0];
-    if (applied) {
-      if (!applied.Checksum) throw new Error(`MIGRATION_CHECKSUM_MISSING: ${migration.version}`);
-      if (String(applied.Checksum).toLowerCase() !== migration.checksum.toLowerCase()) {
-        throw new Error(`MIGRATION_CHECKSUM_MISMATCH: ${migration.version}`);
-      }
-      await tx.commit();
-      return "already-applied";
-    }
-
-    for (const batch of migration.batches) {
-      await new sql.Request(tx).batch(batch);
-    }
-
-    await new sql.Request(tx)
-      .input("version", sql.NVarChar(50), migration.version)
-      .input("description", sql.NVarChar(500), migration.description)
-      .input("checksum", sql.NVarChar(128), migration.checksum)
-      .query(`
-        INSERT INTO dbo.__SchemaVersions (Version, Description, Checksum)
-        VALUES (@version, @description, @checksum);
-      `);
-    await tx.commit();
-    return "applied";
-  } catch (error) {
-    try { await tx.rollback(); } catch {}
-    throw error;
-  }
-}
-
 async function updateMasterSchemaVersion(masterPool, tenantDatabaseId, tenantId, version) {
   await masterPool.request()
     .input("tenantDatabaseId", sql.BigInt, tenantDatabaseId)
@@ -209,34 +101,7 @@ async function processTenant(masterPool, tenant, migrations) {
   const serverName = assertAllowedServer(tenant.ServerName);
   const pool = await new sql.ConnectionPool(tenantConfig(databaseName, serverName)).connect();
   try {
-    await ensureMigrationLedger(pool);
-
-    const baseline = await pool.request()
-      .input("version", sql.NVarChar(50), "V1_InitialSchema")
-      .query(`
-        SELECT TOP(1) Version, Checksum
-        FROM dbo.__SchemaVersions
-        WHERE Version=@version;
-      `);
-    if (!baseline.recordset[0] || !baseline.recordset[0].Checksum) {
-      throw new Error("INITIAL_SCHEMA_NOT_VERIFIED: V1_InitialSchema is missing or has no checksum.");
-    }
-
-    let latest = "V1_InitialSchema";
-    for (const migration of migrations) {
-      const status = await applyMigration(pool, databaseName, migration);
-      if (status === "applied") {
-        console.log(`[${workerId}] ${databaseName}: applied ${migration.version}`);
-      }
-      latest = migration.version;
-    }
-
-    // Keep the master catalog in sync with the tenant's actual migration ledger.
-    const current = await pool.request().query(`
-      SELECT TOP(1) Version FROM dbo.__SchemaVersions
-      ORDER BY MigrationId DESC;
-    `);
-    if (current.recordset[0]?.Version) latest = String(current.recordset[0].Version);
+    const latest = await applyPendingMigrations(pool, databaseName, migrations);
     await updateMasterSchemaVersion(masterPool, tenant.TenantDatabaseId, tenant.TenantId, latest);
     return { databaseName, status: "success", latest };
   } finally {
@@ -261,7 +126,7 @@ async function runCycle(masterPool, migrations) {
 }
 
 async function main() {
-  const migrations = await loadMigrations();
+  const migrations = await loadTenantMigrations();
   console.log(`[${workerId}] loaded ${migrations.length} tenant migration(s).`);
   const masterPool = await new sql.ConnectionPool(masterConfig()).connect();
   try {
