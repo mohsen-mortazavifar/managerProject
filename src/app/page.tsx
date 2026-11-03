@@ -98,7 +98,12 @@ export default function Home() {
         if (cancelled) return;
         if (response.status === 401) {
           sessionStorage.removeItem("repairMasterAccessToken");
-          router.replace("/owner-login");
+          router.replace("/login");
+          return;
+        }
+        if (response.status === 403 && data.code === "SUBSCRIPTION_REQUIRED") {
+          sessionStorage.removeItem("repairMasterAccessToken");
+          router.replace("/login");
           return;
         }
         if (!response.ok || !data.user?.isPlatformUser) {
