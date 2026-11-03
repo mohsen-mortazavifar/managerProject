@@ -1,11 +1,7 @@
 import sql from "mssql";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { applyInitialMigration, applyPendingMigrations, loadBaselineMigration, loadTenantMigrations } from "./lib/tenant-migrations.mjs";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const migrationPath = resolve(here, "../database/tenant-migrations/V1_InitialSchema.sql");
 const workerId = `${process.env.PROVISIONING_WORKER_ID || "worker"}-${randomUUID()}`;
 const pollMs = positiveInt(process.env.PROVISIONING_POLL_MS, 5000);
 const leaseSeconds = positiveInt(process.env.PROVISIONING_LEASE_SECONDS, 300);
@@ -33,13 +29,6 @@ function config(database, server = process.env.DB_SERVER, user = process.env.DB_
       trustServerCertificate: DB_TRUST_SERVER_CERTIFICATE === "true",
     },
   };
-}
-
-function splitBatches(script) {
-  return script.replace(/^\uFEFF/, "")
-    .split(/^\s*GO\s*(?:--.*)?$/gim)
-    .map((batch) => batch.trim())
-    .filter(Boolean);
 }
 
 function quoteDatabaseName(name) {
@@ -362,69 +351,6 @@ async function provisionTenantSqlCredentials(masterPool, databaseName, job, serv
     `);
 }
 
-async function applyInitialMigration(name, serverName, script, migrationChecksum) {
-  const tenantPool = await connect(name, serverName, process.env.DB_USER, process.env.DB_PASSWORD, process.env.TENANT_DB_PORT || process.env.DB_PORT);
-  const tx = new sql.Transaction(tenantPool);
-  await tx.begin();
-  try {
-    await new sql.Request(tx)
-      .input("resource", sql.NVarChar(255), `tenant-schema-migration:${name}`)
-      .query(`
-        DECLARE @lockResult int;
-        EXEC @lockResult = sys.sp_getapplock @Resource=@resource, @LockMode='Exclusive',
-          @LockOwner='Transaction', @LockTimeout=60000;
-        IF @lockResult < 0 THROW 51020, 'TENANT_MIGRATION_LOCK_FAILED', 1;
-      `);
-    const existing = await new sql.Request(tx)
-      .input("version", sql.NVarChar(50), "V1_InitialSchema")
-      .query(`
-        IF OBJECT_ID(N'dbo.__SchemaVersions', N'U') IS NOT NULL
-          SELECT TOP (1) Version, Checksum FROM dbo.__SchemaVersions WITH (UPDLOCK, HOLDLOCK) WHERE Version=@version;
-        ELSE SELECT CAST(NULL AS nvarchar(50)) AS Version, CAST(NULL AS nvarchar(128)) AS Checksum;
-      `);
-    const applied = existing.recordset[0];
-    if (applied?.Version) {
-      if (applied.Checksum && String(applied.Checksum).toLowerCase() !== migrationChecksum.toLowerCase())
-        throw new Error("MIGRATION_CHECKSUM_MISMATCH: V1_InitialSchema was applied with different contents.");
-      if (!applied.Checksum) {
-        // The previous worker could register V1 before later batches completed.
-        // A NULL checksum is therefore ambiguous and must be reviewed, not adopted.
-        throw new Error("MIGRATION_CHECKSUM_MISSING: V1_InitialSchema requires manual schema verification before provisioning can continue.");
-      }
-      await tx.commit();
-      return;
-    }
-    const batches = splitBatches(script);
-    const versionRegistrationBatches = batches.filter((batch) =>
-      /INSERT\s+INTO\s+dbo\.__SchemaVersions/i.test(batch) &&
-      /V1_InitialSchema/i.test(batch)
-    );
-    if (versionRegistrationBatches.length !== 1) {
-      throw new Error("INITIAL_MIGRATION_VERSION_MARKER_NOT_FOUND_OR_AMBIGUOUS");
-    }
-    // V1 is an immutable, historical migration. Its embedded legacy marker is
-    // deliberately skipped so the worker can record the version only after
-    // every schema batch has succeeded in this transaction.
-    for (const batch of batches) {
-      if (versionRegistrationBatches.includes(batch)) continue;
-      await new sql.Request(tx).batch(batch);
-    }
-    await new sql.Request(tx)
-      .input("version", sql.NVarChar(50), "V1_InitialSchema")
-      .input("checksum", sql.NVarChar(128), migrationChecksum)
-      .query(`
-        IF OBJECT_ID(N'dbo.__SchemaVersions', N'U') IS NULL THROW 51000, 'Schema version table was not created.', 1;
-        IF EXISTS (SELECT 1 FROM dbo.__SchemaVersions WHERE Version=@version)
-          THROW 51021, 'Migration script must not register its own version.', 1;
-        INSERT INTO dbo.__SchemaVersions (Version, Description, Checksum)
-        VALUES (@version, N'Initial tenant schema', @checksum);
-      `);
-    await tx.commit();
-  } catch (error) {
-    try { await tx.rollback(); } catch {}
-    throw error;
-  } finally { await tenantPool.close(); }
-}
 async function processJob(pool, job) {
   const lease = await startLeaseHeartbeat(pool, job);
   let completed = false;
@@ -435,7 +361,14 @@ async function processJob(pool, job) {
     await ensureDatabase(databaseName, serverName);
     await lease.assertOwned();
     await writeLog(pool, job, "Migrating", "Migrating", "Applying tenant database schema.");
-    await applyInitialMigration(databaseName, serverName, migration, checksum);
+    const tenantPool = await connect(databaseName, serverName, process.env.DB_USER, process.env.DB_PASSWORD, process.env.TENANT_DB_PORT || process.env.DB_PORT);
+    let latestSchemaVersion;
+    try {
+      await applyInitialMigration(tenantPool, databaseName, baseline.content, baseline.checksum);
+      latestSchemaVersion = await applyPendingMigrations(tenantPool, databaseName, migrations);
+    } finally {
+      await tenantPool.close();
+    }
     await lease.assertOwned();
     await provisionTenantSqlCredentials(pool, databaseName, job, serverName);
     await lease.assertOwned();
@@ -448,7 +381,7 @@ async function processJob(pool, job) {
         .input("tenantDatabaseId", sql.BigInt, job.TenantDatabaseId)
         .input("jobId", sql.UniqueIdentifier, job.JobId)
         .input("workerId", sql.NVarChar(200), workerId)
-        .input("schemaVersion", sql.NVarChar(50), "V1_InitialSchema")
+        .input("schemaVersion", sql.NVarChar(50), latestSchemaVersion)
         .query(`
           UPDATE dbo.TenantDatabases SET IsActive=1, SchemaVersion=@schemaVersion, UpdatedAt=SYSUTCDATETIME()
           WHERE TenantDatabaseId=@tenantDatabaseId AND TenantId=@tenantId;
@@ -502,8 +435,8 @@ async function processJob(pool, job) {
     console.error(`[${job.JobId}] ${failed ? "failed" : "retrying"}: ${message}`);
   } finally { lease.stop(); }
 }
-const migration = await readFile(migrationPath, "utf8");
-const checksum = createHash("sha256").update(migration, "utf8").digest("hex");
+const baseline = await loadBaselineMigration();
+const migrations = await loadTenantMigrations();
 
 async function main() {
   const pool = await connect(process.env.DB_NAME || "Repair_Master");
