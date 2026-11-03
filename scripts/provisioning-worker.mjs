@@ -9,7 +9,7 @@ const migrationPath = resolve(here, "../database/tenant-migrations/V1_InitialSch
 const workerId = `${process.env.PROVISIONING_WORKER_ID || "worker"}-${randomUUID()}`;
 const pollMs = positiveInt(process.env.PROVISIONING_POLL_MS, 5000);
 const leaseSeconds = positiveInt(process.env.PROVISIONING_LEASE_SECONDS, 300);
-const heartbeatMs = positiveInt(process.env.PROVISIONING_HEARTBEAT_MS, Math.max(10000, Math.floor(leaseSeconds * 1000 / 3)));
+const heartbeatMs = positiveInt(process.env.PROVISIONING_HEARTBEAT_MS, Math.max(1000, Math.floor(leaseSeconds * 1000 / 3)));
 const once = process.argv.includes("--once");
 
 function positiveInt(value, fallback) {
@@ -73,18 +73,15 @@ async function writeLog(pool, job, status, step, message, details = null) {
 
 async function recoverExpiredJobs(pool) {
   const result = await pool.request().query(`
-    ;WITH expired AS (
-      UPDATE dbo.ProvisioningJobs
-      SET Status = CASE WHEN AttemptCount >= MaxAttempts THEN 'Failed' ELSE 'RetryScheduled' END,
-          RunAfter = CASE WHEN AttemptCount >= MaxAttempts THEN RunAfter
-            ELSE DATEADD(minute, CASE WHEN AttemptCount < 2 THEN 1 WHEN AttemptCount < 4 THEN 5 ELSE 15 END, SYSUTCDATETIME()) END,
-          WorkerId = NULL, LockedUntil = NULL,
-          LastErrorCode = CASE WHEN AttemptCount >= MaxAttempts THEN 'LEASE_EXPIRED_MAX_ATTEMPTS' ELSE 'LEASE_EXPIRED_RETRY' END
-      OUTPUT INSERTED.JobId, INSERTED.TenantId, INSERTED.AttemptCount, INSERTED.Status
-      WHERE JobType = 'CreateTenantDatabase' AND Status = 'Running'
-        AND LockedUntil <= SYSUTCDATETIME()
-    )
-    SELECT * FROM expired;
+    UPDATE dbo.ProvisioningJobs
+    SET Status = CASE WHEN AttemptCount >= MaxAttempts THEN 'Failed' ELSE 'RetryScheduled' END,
+        RunAfter = CASE WHEN AttemptCount >= MaxAttempts THEN RunAfter
+          ELSE DATEADD(minute, CASE WHEN AttemptCount < 2 THEN 1 WHEN AttemptCount < 4 THEN 5 ELSE 15 END, SYSUTCDATETIME()) END,
+        WorkerId = NULL, LockedUntil = NULL,
+        LastErrorCode = CASE WHEN AttemptCount >= MaxAttempts THEN 'LEASE_EXPIRED_MAX_ATTEMPTS' ELSE 'LEASE_EXPIRED_RETRY' END
+    OUTPUT INSERTED.JobId, INSERTED.TenantId, INSERTED.AttemptCount, INSERTED.Status
+    WHERE JobType = 'CreateTenantDatabase' AND Status = 'Running'
+      AND LockedUntil <= SYSUTCDATETIME();
   `);
   for (const row of result.recordset) {
     await pool.request()
@@ -390,11 +387,9 @@ async function applyInitialMigration(name, serverName, script, migrationChecksum
       if (applied.Checksum && String(applied.Checksum).toLowerCase() !== migrationChecksum.toLowerCase())
         throw new Error("MIGRATION_CHECKSUM_MISMATCH: V1_InitialSchema was applied with different contents.");
       if (!applied.Checksum) {
-        // One-time adoption for databases created by the previous worker, which stored NULL.
-        await new sql.Request(tx)
-          .input("version", sql.NVarChar(50), "V1_InitialSchema")
-          .input("checksum", sql.NVarChar(128), migrationChecksum)
-          .query("UPDATE dbo.__SchemaVersions SET Checksum=@checksum WHERE Version=@version AND Checksum IS NULL;");
+        // The previous worker could register V1 before later batches completed.
+        // A NULL checksum is therefore ambiguous and must be reviewed, not adopted.
+        throw new Error("MIGRATION_CHECKSUM_MISSING: V1_InitialSchema requires manual schema verification before provisioning can continue.");
       }
       await tx.commit();
       return;
