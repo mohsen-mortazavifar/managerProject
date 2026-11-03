@@ -59,7 +59,7 @@ export default function OwnerLoginPage() {
       const result = await response.json() as VerifyResult;
       if (!response.ok || !result.accessToken) { setError(result.error || "کد معتبر نیست یا منقضی شده است."); return; }
       sessionStorage.setItem("repairMasterAccessToken", result.accessToken);
-      router.replace(result.user?.isPlatformUser ? "/" : "/onboarding");
+      router.replace(result.user?.isPlatformUser ? "/" : "/workspace");
     } catch { setError("ارتباط با سرور برقرار نشد."); }
     finally { setBusy(false); }
   }
