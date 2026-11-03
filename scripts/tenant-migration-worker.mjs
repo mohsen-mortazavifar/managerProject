@@ -83,7 +83,7 @@ async function loadMigrations() {
   const seenVersions = new Set();
   let expectedNumber = 2;
   for (const file of files) {
-    const number = Number(file.match(/^V(\\d+)/i)[1]);
+    const number = Number(file.match(/^V(\d+)/i)[1]);
     if (number !== expectedNumber) {
       throw new Error(`TENANT_MIGRATION_SEQUENCE_GAP: expected V${expectedNumber}, found ${file}`);
     }
