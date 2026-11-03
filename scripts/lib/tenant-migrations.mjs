@@ -9,15 +9,15 @@ const migrationsDirectory = resolve(here, "../../database/tenant-migrations");
 const baselineVersion = "V1_InitialSchema";
 
 export function splitBatches(script) {
-  return script.replace(/^\\uFEFF/, "")
-    .split(/^\\s*GO\\s*(?:--.*)?$/gim)
+  return script.replace(/^\uFEFF/, "")
+    .split(/^\s*GO\s*(?:--.*)?$/gim)
     .map((batch) => batch.trim())
     .filter(Boolean);
 }
 
 export async function loadTenantMigrations() {
   const files = (await readdir(migrationsDirectory, { withFileTypes: true }))
-    .filter((entry) => entry.isFile() && /^V[2-9][0-9]*_[A-Za-z0-9_-]+\\.sql$/i.test(entry.name))
+    .filter((entry) => entry.isFile() && /^V(?:[2-9]|[1-9][0-9]+)_[A-Za-z0-9_-]+\.sql$/i.test(entry.name))
     .map((entry) => entry.name)
     .sort((a, b) => {
       const av = Number(a.match(/^V([0-9]+)/i)[1]);
@@ -33,9 +33,9 @@ export async function loadTenantMigrations() {
       throw new Error(`TENANT_MIGRATION_SEQUENCE_GAP: expected V${expectedNumber}, found ${file}`);
     }
     expectedNumber++;
-    const version = file.replace(/\\.sql$/i, "");
+    const version = file.replace(/\.sql$/i, "");
     const content = await readFile(resolve(migrationsDirectory, file), "utf8");
-    if (/^\\s*USE\\s+|\\bCREATE\\s+DATABASE\\b|\\bALTER\\s+DATABASE\\b|\\bBEGIN\\s+TRAN(?:SACTION)?\\b|\\bCOMMIT\\s+TRAN(?:SACTION)?\\b|\\bROLLBACK\\s+TRAN(?:SACTION)?\\b/im.test(content)) {
+    if (/^\s*USE\s+|\bCREATE\s+DATABASE\b|\bALTER\s+DATABASE\b|\bBEGIN\s+TRAN(?:SACTION)?\b|\bCOMMIT\s+TRAN(?:SACTION)?\b|\bROLLBACK\s+TRAN(?:SACTION)?\b/im.test(content)) {
       throw new Error(`MIGRATION_CONTAINS_FORBIDDEN_TRANSACTION_OR_DATABASE_COMMAND: ${file}`);
     }
     migrations.push({
@@ -89,7 +89,7 @@ export async function applyInitialMigration(pool, databaseName, script, migratio
 
     const batches = splitBatches(script);
     const markerBatches = batches.filter((batch) =>
-      /INSERT\\s+INTO\\s+dbo\\.__SchemaVersions/i.test(batch) && /V1_InitialSchema/i.test(batch)
+      /INSERT\s+INTO\s+dbo\.__SchemaVersions/i.test(batch) && /V1_InitialSchema/i.test(batch)
     );
     if (markerBatches.length !== 1) throw new Error("INITIAL_MIGRATION_VERSION_MARKER_NOT_FOUND_OR_AMBIGUOUS");
 
