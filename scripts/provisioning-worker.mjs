@@ -1,11 +1,11 @@
 import sql from "mssql";
-import { createHash, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const migrationPath = resolve(here, "../database/tenant-migrations/V1_InitialSchema.sql");
+import { randomUUID } from "node:crypto";
+import {
+  applyInitialMigration,
+  applyPendingMigrations,
+  loadBaselineMigration,
+  loadTenantMigrations,
+} from "./lib/tenant-migrations.mjs";
 const workerId = `${process.env.PROVISIONING_WORKER_ID || "worker"}-${randomUUID()}`;
 const pollMs = positiveInt(process.env.PROVISIONING_POLL_MS, 5000);
 const leaseSeconds = positiveInt(process.env.PROVISIONING_LEASE_SECONDS, 300);
@@ -32,13 +32,6 @@ function config(database) {
       trustServerCertificate: DB_TRUST_SERVER_CERTIFICATE === "true",
     },
   };
-}
-
-function splitBatches(script) {
-  return script.replace(/^\uFEFF/, "")
-    .split(/^\s*GO\s*(?:--.*)?$/gim)
-    .map((batch) => batch.trim())
-    .filter(Boolean);
 }
 
 function quoteDatabaseName(name) {
@@ -135,49 +128,21 @@ async function ensureDatabase(name) {
   }
 }
 
-async function applyInitialMigration(name, script, checksum) {
-  const tenantPool = await connect(name);
-  try {
-    const existing = await tenantPool.request().query(`
-      IF OBJECT_ID(N'dbo.__SchemaVersions', N'U') IS NOT NULL
-        SELECT TOP (1) Version FROM dbo.__SchemaVersions WHERE Version = N'V1_InitialSchema';
-      ELSE SELECT CAST(NULL AS nvarchar(50)) AS Version;
-    `);
-    if (existing.recordset[0]?.Version === "V1_InitialSchema") return;
-
-    for (const batch of splitBatches(script)) {
-      await tenantPool.request().batch(batch);
-    }
-
-    const verify = await tenantPool.request()
-      .input("version", sql.NVarChar(50), "V1_InitialSchema")
-      .input("checksum", sql.NVarChar(128), checksum)
-      .query(`
-        IF OBJECT_ID(N'dbo.__SchemaVersions', N'U') IS NULL
-          THROW 51000, 'Schema version table was not created.', 1;
-        IF NOT EXISTS (SELECT 1 FROM dbo.__SchemaVersions WHERE Version = @version)
-          INSERT INTO dbo.__SchemaVersions (Version, Description, Checksum)
-          VALUES (@version, N'Initial tenant schema', @checksum);
-        ELSE
-          UPDATE dbo.__SchemaVersions SET Checksum = @checksum WHERE Version = @version AND Checksum IS NULL;
-        SELECT TOP (1) Version FROM dbo.__SchemaVersions WHERE Version = @version;
-      `);
-    if (verify.recordset[0]?.Version !== "V1_InitialSchema") {
-      throw new Error("INITIAL_MIGRATION_VERIFICATION_FAILED");
-    }
-  } finally {
-    await tenantPool.close();
-  }
-}
-
-async function processJob(pool, job, migration, checksum) {
+async function processJob(pool, job, baseline, migrations) {
   try {
     await writeLog(pool, job, "CreatingDatabase", "CreatingDatabase", "Creating tenant database.");
     const databaseName = await getDatabaseName(pool, job);
     await ensureDatabase(databaseName);
 
     await writeLog(pool, job, "Migrating", "Migrating", "Applying tenant database schema.");
-    await applyInitialMigration(databaseName, migration, checksum);
+    const tenantPool = await connect(databaseName);
+    let latestSchemaVersion;
+    try {
+      await applyInitialMigration(tenantPool, databaseName, baseline.content, baseline.checksum);
+      latestSchemaVersion = await applyPendingMigrations(tenantPool, databaseName, migrations, baseline.checksum);
+    } finally {
+      await tenantPool.close();
+    }
 
     const tx = new sql.Transaction(pool);
     await tx.begin();
@@ -186,7 +151,7 @@ async function processJob(pool, job, migration, checksum) {
         .input("tenantId", sql.BigInt, job.TenantId)
         .input("tenantDatabaseId", sql.BigInt, job.TenantDatabaseId)
         .input("jobId", sql.UniqueIdentifier, job.JobId)
-        .input("schemaVersion", sql.NVarChar(50), "V1_InitialSchema")
+        .input("schemaVersion", sql.NVarChar(50), latestSchemaVersion)
         .query(`
           UPDATE dbo.TenantDatabases
           SET IsActive = 1, SchemaVersion = @schemaVersion, UpdatedAt = SYSUTCDATETIME()
@@ -238,8 +203,9 @@ async function processJob(pool, job, migration, checksum) {
 }
 
 async function main() {
-  const migration = await readFile(migrationPath, "utf8");
-  const checksum = createHash("sha256").update(migration, "utf8").digest("hex");
+  const baseline = await loadBaselineMigration();
+  const migrations = await loadTenantMigrations();
+  console.log(`[${workerId}] loaded ${migrations.length} tenant migration(s).`);
   const pool = await connect(process.env.DB_NAME || "Repair_Master");
   try {
     do {
@@ -249,7 +215,7 @@ async function main() {
         await new Promise((resolve) => setTimeout(resolve, pollMs));
         continue;
       }
-      await processJob(pool, job, migration, checksum);
+      await processJob(pool, job, baseline, migrations);
     } while (!once);
   } finally {
     await pool.close();
