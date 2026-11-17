@@ -45,3 +45,4 @@ BEGIN
     ON repair.ServiceReminders(Status, ProcessingAt, ReminderAt)
     WHERE Status = 'Processing';
 END;
+
