@@ -1,4 +1,5 @@
 import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
+import { sendSms } from "@/lib/sms/sendSMS";
 
 export const OTP_TTL_SECONDS = 5 * 60;
 export const OTP_RESEND_COOLDOWN_SECONDS = 60;
@@ -15,12 +16,9 @@ function getOtpSecret(): string {
 export function normalizeMobile(value: string): string {
   let mobile = value.trim().replace(/[\s()\-]/g, "");
 
-  // 0912... → +98912...
   if (/^09\d{9}$/.test(mobile)) {
     mobile = `+98${mobile.slice(1)}`;
-  }
-  // 98912... → +98912...
-  else if (/^989\d{9}$/.test(mobile)) {
+  } else if (/^989\d{9}$/.test(mobile)) {
     mobile = `+${mobile}`;
   }
 
@@ -49,29 +47,8 @@ export function safeCompareOtpHash(stored: Buffer, challengeId: string, otp: str
 }
 
 export async function sendOtpSms(mobile: string, otp: string): Promise<void> {
-  const endpoint = process.env.SMS_PROVIDER_URL;
-  const apiKey = process.env.SMS_PROVIDER_API_KEY;
-
-  if (endpoint) {
-    if (!apiKey) throw new Error("SMS_PROVIDER_API_KEY must be configured with SMS_PROVIDER_URL.");
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({ to: mobile, message: `Your verification code is ${otp}` }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!response.ok) throw new Error("SMS_PROVIDER_REQUEST_FAILED");
-    return;
+  const result = await sendSms(mobile, `کد تأیید شما: ${otp}`);
+  if (!result.success) {
+    throw new Error(`SMS_PROVIDER_REQUEST_FAILED: ${result.message} (code: ${result.code})`);
   }
-
-  // Development-only transport. Never expose OTPs in production logs.
-  if (process.env.NODE_ENV === "development" && process.env.OTP_DEV_LOG === "true") {
-    console.info("[OTP DEV ONLY]", { mobile, otp });
-    return;
-  }
-  throw new Error("SMS_PROVIDER_NOT_CONFIGURED");
 }
