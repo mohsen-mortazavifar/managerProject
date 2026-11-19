@@ -208,8 +208,6 @@ IF EXISTS (SELECT 1 FROM inventory.PartPriceHistory WHERE Price IS NULL OR Effec
   THROW 51101, 'Unable to migrate inventory.PartPriceHistory to effective-dated prices.', 1;
 
 ALTER TABLE inventory.PartPriceHistory ALTER COLUMN Price BIGINT NOT NULL;
-ALTER TABLE inventory.PartPriceHistory ALTER COLUMN EffectiveFrom DATETIME2(0) NOT NULL;
-ALTER TABLE inventory.PartPriceHistory ALTER COLUMN CreatedAt DATETIME2(0) NOT NULL;
 
 IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'inventory.PartPriceHistory') AND name=N'NewPrice' AND is_nullable=0)
   ALTER TABLE inventory.PartPriceHistory ALTER COLUMN NewPrice BIGINT NULL;
