@@ -171,7 +171,9 @@ async function getDatabaseInfo(pool, job) {
     `);
   const row = result.recordset[0];
   quoteDatabaseName(row?.DatabaseName);
-  const serverName = String(row?.ServerName ?? "127.0.0.1").trim();
+  // ServerName is persisted per tenant database. Older pending records may be null;
+  // in that case use the same DB_SERVER value used when the tenant was registered.
+  const serverName = String(row?.ServerName || process.env.DB_SERVER || "").trim();
   if (!serverName) throw new Error("TENANT_DATABASE_SERVER_NOT_CONFIGURED");
   const configuredServer = String(process.env.DB_SERVER ?? "").trim().toLowerCase();
   const allowedServers = (process.env.TENANT_DB_ALLOWED_SERVERS || "")
@@ -318,6 +320,7 @@ async function provisionTenantSqlCredentials(masterPool, databaseName, job, serv
         GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::[inventory] TO [tenant_app_runtime];
         GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::[files] TO [tenant_app_runtime];
         GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::[notification] TO [tenant_app_runtime];
+        GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::[audit] TO [tenant_app_runtime];
         GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::[security] TO [tenant_app_runtime];
 
         GRANT EXECUTE ON SCHEMA::[core] TO [tenant_app_runtime];
@@ -351,6 +354,56 @@ async function provisionTenantSqlCredentials(masterPool, databaseName, job, serv
     `);
 }
 
+async function ensureDefaultBranch(masterPool, tenantPool, job) {
+  const result = await masterPool.request()
+    .input("tenantId", sql.BigInt, job.TenantId)
+    .query(`
+      SELECT TOP (1) Name, ContactPhone, ContactMobile, BusinessAddress
+      FROM dbo.Tenants
+      WHERE TenantId = @tenantId;
+    `);
+  const tenantInfo = result.recordset[0];
+  if (!tenantInfo) throw new Error("TENANT_PROFILE_NOT_FOUND");
+
+  const branchName = String(tenantInfo.Name || "").trim();
+  if (!branchName) throw new Error("TENANT_BUSINESS_NAME_MISSING");
+
+  const phone = String(tenantInfo.ContactPhone || tenantInfo.ContactMobile || "").trim() || null;
+  const address = String(tenantInfo.BusinessAddress || "").trim() || null;
+
+  await tenantPool.request()
+    .input("code", sql.NVarChar(50), "1")
+    .input("name", sql.NVarChar(200), branchName)
+    .input("phone", sql.NVarChar(20), phone)
+    .input("address", sql.NVarChar(500), address)
+    .query(`
+      SET XACT_ABORT ON;
+      BEGIN TRANSACTION;
+
+      IF EXISTS (SELECT 1 FROM core.Branches WITH (UPDLOCK, HOLDLOCK) WHERE Code = @code)
+      BEGIN
+        UPDATE core.Branches
+        SET Name = @name, Phone = @phone, Address = @address,
+            IsMain = 1, IsActive = 1, UpdatedAt = SYSUTCDATETIME(), DeletedAt = NULL
+        WHERE Code = @code;
+      END
+      ELSE IF EXISTS (SELECT 1 FROM core.Branches WITH (UPDLOCK, HOLDLOCK) WHERE Code = N'MAIN')
+      BEGIN
+        UPDATE core.Branches
+        SET Code = @code, Name = @name, Phone = @phone, Address = @address,
+            IsMain = 1, IsActive = 1, UpdatedAt = SYSUTCDATETIME(), DeletedAt = NULL
+        WHERE Code = N'MAIN';
+      END
+      ELSE
+      BEGIN
+        INSERT INTO core.Branches (Code, Name, Phone, Address, IsMain, IsActive)
+        VALUES (@code, @name, @phone, @address, 1, 1);
+      END
+
+      COMMIT TRANSACTION;
+    `);
+}
+
 async function processJob(pool, job) {
   const lease = await startLeaseHeartbeat(pool, job);
   let completed = false;
@@ -366,6 +419,7 @@ async function processJob(pool, job) {
     try {
       await applyInitialMigration(tenantPool, databaseName, baseline.content, baseline.checksum);
       latestSchemaVersion = await applyPendingMigrations(tenantPool, databaseName, migrations, baseline.checksum);
+      await ensureDefaultBranch(pool, tenantPool, job);
     } finally {
       await tenantPool.close();
     }
