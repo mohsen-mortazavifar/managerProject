@@ -132,7 +132,7 @@ export async function POST(request: Request) {
         const db = await new sql.Request(tx)
           .input("tenantId", sql.BigInt, tenantId)
           .input("databaseName", sql.NVarChar(128), databaseName)
-          .input("serverName", sql.NVarChar(128), process.env.TENANT_DB_SERVER || null)
+          .input("serverName", sql.NVarChar(128), process.env.DB_SERVER?.trim() || null)
           .query(`
             INSERT INTO dbo.TenantDatabases
               (TenantId, DatabaseName, ServerName, ConnectionStringEncrypted, SchemaVersion, IsActive, CreatedAt, UpdatedAt)
