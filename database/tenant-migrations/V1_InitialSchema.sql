@@ -830,16 +830,40 @@ IF OBJECT_ID(N'notification.SmsTemplates', N'U') IS NULL
   THROW 51110, 'notification.SmsTemplates must exist before this script is applied.', 1;
 GO
 
-IF NOT EXISTS (SELECT 1 FROM notification.SmsTemplates WHERE Code=N'RepairCompleted')
-BEGIN
-  INSERT INTO notification.SmsTemplates (Code, Title, Body, IsActive)
-  VALUES (
-    N'RepairCompleted',
-    N'تعمیر دستگاه انجام شد',
-    N'سلام {{CustomerName}} عزیز، تعمیر دستگاه {{DeviceType}} {{Brand}} {{Model}} انجام شد. کد پیگیری: {{TrackingToken}}',
-    1
-  );
-END;
+INSERT INTO notification.SmsTemplates (Code, Title, Body, IsActive)
+SELECT v.Code, v.Title, v.Body, 1
+FROM (VALUES
+    (
+        N'ReceiptCreated',
+        N'پذیرش دستگاه',
+        N'{CustomerName} عزیز، دستگاه شما با شماره پذیرش {ReceiptNumber} ثبت شد.'
+    ),
+    (
+        N'RepairCompleted',
+        N'تعمیر دستگاه انجام شد',
+        N'سلام {CustomerName} عزیز، تعمیر دستگاه {DeviceType} {Brand} {Model} انجام شد. کد پیگیری: {TrackingToken}'
+    ),
+    (
+        N'ReadyForDelivery',
+        N'آماده تحویل',
+        N'دستگاه شما آماده تحویل است. کد رهگیری: {TrackingToken}'
+    ),
+    (
+        N'Delivered',
+        N'تحویل داده شد',
+        N'دستگاه شما تحویل داده شد. از اعتماد شما سپاسگزاریم.'
+    ),
+    (
+        N'ServiceReminder',
+        N'یادآوری سرویس',
+        N'{CustomerName} عزیز، وقت سرویس دوره‌ای دستگاه شماست.'
+    )
+) AS v(Code, Title, Body)
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM notification.SmsTemplates AS s
+    WHERE s.Code = v.Code
+);
 GO
 
 
