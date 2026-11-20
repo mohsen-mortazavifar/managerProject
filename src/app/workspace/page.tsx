@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, CircleUserRound, ClipboardList, CreditCard, LogOut, RefreshCw, Settings, ShieldCheck, Wrench } from "lucide-react";
+import { Building2, CircleUserRound, ClipboardList, CreditCard, LogOut, RefreshCw, Settings, ShieldCheck, Wrench, LockKeyhole } from "lucide-react";
 
 type StatusResponse = {
   error?: string;
@@ -30,10 +30,15 @@ export default function WorkspacePage() {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       });
-      const meData = await meResponse.json() as { user?: { isPlatformUser?: boolean } };
+      const meData = await meResponse.json() as { user?: { isPlatformUser?: boolean }; code?: string };
       if (meResponse.status === 401) {
         sessionStorage.removeItem("repairMasterAccessToken");
         router.replace("/owner-login");
+        return;
+      }
+      if (meResponse.status === 403 && meData.code === "SUBSCRIPTION_REQUIRED") {
+        sessionStorage.removeItem("repairMasterAccessToken");
+        router.replace("/login");
         return;
       }
       if (meResponse.ok && meData.user?.isPlatformUser) {
@@ -56,6 +61,22 @@ export default function WorkspacePage() {
       }
       if (result.tenant?.status !== "Active" || !result.database?.ready) {
         router.replace("/onboarding");
+        return;
+      }
+      const subscriptionResponse = await fetch("/api/subscription-orders", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      if (!subscriptionResponse.ok) {
+        setError("وضعیت اشتراک بررسی نشد. دوباره تلاش کنید.");
+        return;
+      }
+      const subscriptionData = await subscriptionResponse.json() as { orders?: Array<{ status: string; startsAt: string; endsAt: string }> };
+      const hasActivePlan = (subscriptionData.orders || []).some((order) =>
+        order.status === "Active" && new Date(order.startsAt).getTime() <= Date.now() && new Date(order.endsAt).getTime() > Date.now()
+      );
+      if (!hasActivePlan) {
+        router.replace("/workspace/subscription2");
         return;
       }
       setData(result);
@@ -114,7 +135,7 @@ export default function WorkspacePage() {
           <article><span className="workspace-summary-icon"><CircleUserRound size={19} /></span><div><small>کد فضای کاری</small><strong dir="ltr">{data?.tenant?.code || "—"}</strong></div></article>
         </section>
 
-        <div className="workspace-section-heading"><div><h2>مدیریت کسب‌وکار</h2><p>ماژول‌ها به‌تدریج در همین فضای کاری اضافه می‌شوند.</p></div></div>
+        <div className="workspace-section-heading"><div><h2>مدیریت کسب‌وکار</h2><p></p></div></div>
         <section className="workspace-module-grid">
           <article className="workspace-module-card workspace-module-card-active">
             <span><Building2 size={21} /></span><div><h3>اطلاعات کسب‌وکار</h3><p>وضعیت و مشخصات فضای کاری فعلی</p></div><small>آماده</small>
@@ -135,7 +156,10 @@ export default function WorkspacePage() {
             <span><Settings size={21} /></span><div><h3>تنظیمات فضای کاری</h3><p>تنظیمات پایه و دسترسی اعضا</p></div><small>در نقشه راه</small>
           </article>
         </section>
-        <footer className="workspace-footer">این نسخه اولیه پنل مالک است؛ ماژول‌های عملیاتی هنوز به‌صورت کامل فعال نشده‌اند.</footer>
+        <button type="button" className="workspace-module-card workspace-module-card-link" onClick={() => router.push("/workspace/security/password")} aria-label="تنظیم رمز عبور پشتیبان">
+          <span><LockKeyhole size={21} /></span><div><h3>رمز عبور پشتیبان</h3><p>ورود جایگزین در صورت در دسترس نبودن پیامک</p></div><small>تنظیم رمز</small>
+        </button>
+        <footer className="workspace-footer"></footer>
       </section>
     </main>
   );

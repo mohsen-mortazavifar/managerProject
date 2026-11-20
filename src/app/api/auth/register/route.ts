@@ -217,22 +217,16 @@ export async function POST(request: Request) {
         { status: 202, headers: { "Cache-Control": "no-store" } },
       );
     } catch (error) {
-      console.log("[register] Transaction failed:", error);
-       return errorResponse(
-    "Registration is temporarily unavailable.",
-    503
-  );
-      try { await transaction.rollback(); } catch { console.log("[register] Transaction failed:", error); }
+      try { await transaction.rollback(); } catch { /* transaction may already be complete */ }
 
       const sqlError = error as { number?: number; message?: string };
       if (sqlError.number === 2627 || sqlError.number === 2601) {
-        console.log("[register] Transaction failed:", error);
         return errorResponse("ایمیل یا شماره همراه قبلاً ثبت شده است.", 409);
       }
       if (sqlError.message === "TENANT_OWNER_ROLE_MISSING") {
-        console.log("[register] Transaction failed:", error);
         return errorResponse("نقش مالک کسب‌وکار در دیتابیس تعریف نشده است.", 503);
       }
+      console.error("[register] Transaction failed:", error);
       return errorResponse("ثبت‌نام انجام نشد. ساختار دیتابیس و لاگ سرور را بررسی کنید.", 503);
     }
   } catch (error) {

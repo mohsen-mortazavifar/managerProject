@@ -112,10 +112,15 @@ export async function POST(request: Request) {
     response.headers.set("Cache-Control", "no-store");
     response.headers.set("Pragma", "no-cache");
     return response;
-  } catch {
-    return NextResponse.json(
-      { error: "ورود موقتاً در دسترس نیست. تنظیمات سرور و اجرای اسکریپت محدودسازی ورود را بررسی کنید." },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
-    );
+  } catch{
+   
+
+  return NextResponse.json(
+    {
+      error:
+        "ورود موقتاً در دسترس نیست. تنظیمات سرور و اجرای اسکریپت محدودسازی ورود را بررسی کنید.",
+    },
+    { status: 503, headers: { "Cache-Control": "no-store" } },
+  );
   }
 }

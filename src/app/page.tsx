@@ -89,7 +89,7 @@ export default function Home() {
 
   useEffect(() => {
     const token = sessionStorage.getItem("repairMasterAccessToken");
-    if (!token) { router.replace("/login"); return; }
+    if (!token) { router.replace("/owner-login"); return; }
     let cancelled = false;
     void (async () => {
       try {
@@ -101,13 +101,18 @@ export default function Home() {
           router.replace("/login");
           return;
         }
+        if (response.status === 403 && data.code === "SUBSCRIPTION_REQUIRED") {
+          sessionStorage.removeItem("repairMasterAccessToken");
+          router.replace("/login");
+          return;
+        }
         if (!response.ok || !data.user?.isPlatformUser) {
           router.replace("/workspace");
           return;
         }
         setCheckingAccess(false);
       } catch {
-        if (!cancelled) router.replace("/login");
+        if (!cancelled) router.replace("/owner-login");
       }
     })();
     return () => { cancelled = true; };
