@@ -69,9 +69,9 @@ export default function OwnerLoginPage() {
       <section className="auth-card">
         
         <div className="auth-brand"><span>RM</span><div><strong>Repair Master</strong><small>ورود به فضای کسب‌وکار</small></div></div>
-        <div className="auth-icon"><Phone size={23} /></div>
-        <h1>ورود مالک با موبایل</h1>
-        <p className="auth-description">شماره موبایل و رمز عبور خود را وارد کنید تا به پنل کسب‌وکار بروید.</p>
+        {/* <div className="auth-icon"><Phone size={23} /></div> */}
+
+        <p className="auth-description">شماره موبایل و رمز عبور خود را وارد کنید.</p>
         {mode === "password" ? (
           <form className="auth-form" onSubmit={loginWithPassword}>
             <label htmlFor="mobile"><Phone size={15} /> شماره موبایل</label>
@@ -103,7 +103,7 @@ export default function OwnerLoginPage() {
           </form>
         )}
         <div className="auth-security"><ShieldCheck size={16} /><span>{mode === "otp" ? "کد یک‌بارمصرف حداکثر ۵ دقیقه اعتبار دارد." : "ورود امن به پنل کسب‌وکار"}</span></div>
-        <p className="auth-footnote">حساب ندارید؟ <a href="/register">ثبت‌نام مالک</a></p>
+        <p className="auth-footnote">حساب ندارید؟ <a href="/register">ثبت‌نام</a></p>
       </section>
     </main>
   );

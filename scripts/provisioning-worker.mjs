@@ -60,6 +60,10 @@ async function writeLog(pool, job, status, step, message, details = null) {
     `);
 }
 
+
+//اینجا ورکر تلاش های مربوط به ایجاد دیتابیس رو زمانبندی میکند
+//یا در صورت اتمام تلاش ها Faildمیکند
+//سپس در جدول TenantProvisioningLogs لاگ میکند
 async function recoverExpiredJobs(pool) {
   const result = await pool.request().query(`
     UPDATE dbo.ProvisioningJobs
@@ -90,6 +94,8 @@ async function recoverExpiredJobs(pool) {
   }
 }
 
+//اینجا جاب را انتخاب میکند و وضعیت جاب رو تغییر میدهد 
+//اطلاعات جاب رو برمیگردونه
 async function claimJob(pool) {
   await recoverExpiredJobs(pool);
   const tx = new sql.Transaction(pool);
@@ -115,17 +121,23 @@ async function claimJob(pool) {
     await tx.commit();
     return result.recordset[0] || null;
   } catch (error) {
-    try { await tx.rollback(); } catch {}
+    try { await tx.rollback(); } catch { }
     throw error;
   }
 }
 
+
+//در زمان ساخت دیتابیس برای زنده نگه داشتن قفل)(lease)یک جاب  در دیتابیس استفاده میشود و 
+//به دیتابیس میگه من هنوز زنده هستم
 async function startLeaseHeartbeat(pool, job) {
-  let stopped = false, leaseLost = false, inFlight = false;
+  let stopped = false,//آیا heartbeat متوقف شده است
+    leaseLost = false//آیا مالکیت از دست رفته است
+    , inFlight = false;//مانع از این میشود جند درخواست قفل فعال شود
   const heartbeat = async () => {
     if (stopped || leaseLost || inFlight) return;
     inFlight = true;
     try {
+      //تمدید زمان قفل در دیتابیس
       const result = await pool.request()
         .input("jobId", sql.UniqueIdentifier, job.JobId)
         .input("workerId", sql.NVarChar(200), workerId)
@@ -137,16 +149,19 @@ async function startLeaseHeartbeat(pool, job) {
             AND LockedUntil > SYSUTCDATETIME();
           SELECT @@ROWCOUNT AS Affected;
         `);
+      //اگر عملیات موفق نبود مالکیت از دست رفته قبلا
       if (Number(result.recordset[0]?.Affected) !== 1) leaseLost = true;
     } catch (error) {
       console.error(`[${job.JobId}] heartbeat failed: ${error.message}`);
     } finally { inFlight = false; }
   };
+  //این دستور تابع heartbeat را به‌صورت دوره‌ای اجرا می‌کند.
   const timer = setInterval(heartbeat, heartbeatMs);
-  timer.unref?.();
+  timer.unref?.();//به Node.js می‌گوید این Timer به‌تنهایی مانع خروج برنامه نشود.
   return {
     async assertOwned() {
-      if (leaseLost) throw new Error("PROVISIONING_LEASE_LOST");
+      if (leaseLost) throw new Error("PROVISIONING_LEASE_LOST");//اگر از دست رفته باشد خطا ایجاد میکند
+      //بررسی میکنه آیا هنوز مالک جاب هست یا نه؟
       const result = await pool.request()
         .input("jobId", sql.UniqueIdentifier, job.JobId)
         .input("workerId", sql.NVarChar(200), workerId)
@@ -155,11 +170,15 @@ async function startLeaseHeartbeat(pool, job) {
           WHERE JobId = @jobId AND WorkerId = @workerId
             AND Status = 'Running' AND LockedUntil > SYSUTCDATETIME();
         `);
+      //اگر هیچ رکوردی پیدا نشود یعنی مالکیت معتبر نیست و خطا ایجاد میکند
       if (!result.recordset.length) { leaseLost = true; throw new Error("PROVISIONING_LEASE_LOST"); }
     },
     stop() { stopped = true; clearInterval(timer); },
   };
 }
+
+
+
 async function getDatabaseInfo(pool, job) {
   const result = await pool.request()
     .input("tenantId", sql.BigInt, job.TenantId)
@@ -178,6 +197,12 @@ async function getDatabaseInfo(pool, job) {
   const configuredServer = String(process.env.DB_SERVER ?? "").trim().toLowerCase();
   const allowedServers = (process.env.TENANT_DB_ALLOWED_SERVERS || "")
     .split(";").map((item) => item.trim().toLowerCase()).filter(Boolean);
+
+  console.log("Server validation:", {
+    serverName,
+    allowedServers,
+    configuredServer,
+  });
   if (allowedServers.length ? !allowedServers.includes(serverName.toLowerCase()) : serverName.toLowerCase() !== configuredServer) {
     throw new Error("TENANT_DATABASE_SERVER_NOT_ALLOWLISTED");
   }
@@ -322,7 +347,9 @@ async function provisionTenantSqlCredentials(masterPool, databaseName, job, serv
         GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::[notification] TO [tenant_app_runtime];
         GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::[audit] TO [tenant_app_runtime];
         GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::[security] TO [tenant_app_runtime];
-
+        GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::[dbo] TO [tenant_app_runtime];
+       
+        GRANT EXECUTE ON SCHEMA::[dbo] TO [tenant_app_runtime];
         GRANT EXECUTE ON SCHEMA::[core] TO [tenant_app_runtime];
         GRANT EXECUTE ON SCHEMA::[crm] TO [tenant_app_runtime];
         GRANT EXECUTE ON SCHEMA::[repair] TO [tenant_app_runtime];
@@ -451,14 +478,14 @@ async function processJob(pool, job) {
         `);
       await tx.commit();
       completed = true;
-    } catch (error) { try { await tx.rollback(); } catch {} throw error; }
+    } catch (error) { try { await tx.rollback(); } catch { } throw error; }
 
     try { await writeLog(pool, job, "Completed", "Completed", "Tenant database is ready."); }
     catch (logError) { console.error(`[${job.JobId}] completion log failed: ${logError.message}`); }
     console.log(`[${job.JobId}] completed.`);
   } catch (error) {
     if (completed || error?.message === "PROVISIONING_LEASE_LOST" ||
-        error?.message?.includes("PROVISIONING_LEASE_LOST_BEFORE_COMPLETION")) {
+      error?.message?.includes("PROVISIONING_LEASE_LOST_BEFORE_COMPLETION")) {
       console.error(`[${job.JobId}] lease lost; this worker will not change the job state.`);
       return;
     }

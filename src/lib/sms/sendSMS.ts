@@ -1,6 +1,13 @@
 import type { SendSmsResult, SmsStatus, SmsSendPayload } from "./types";
 
-const API_URL = "https://sms.parsgreen.ir/Apiv2/Message/SendSms";
+const baseUrl = process.env.BaseUrl?.trim();
+const sendPath = process.env.SendPath?.trim();
+
+if (!baseUrl || !sendPath) {
+    throw new Error("BaseUrl and SendPath must be defined.");
+}
+
+const API_URL = `${baseUrl.replace(/\/+$/, "")}/${sendPath.replace(/^\/+/, "")}`;
 
 const SMS_ERROR_MAP = new Map<number, string>([
   [-9994, "API Key پارس‌گرین نامعتبر است."],
@@ -13,8 +20,8 @@ const SMS_ERROR_MAP = new Map<number, string>([
 ]);
 
 function getConfiguration() {
-  const apiKey = process.env.PARSPACK_SMS_API_KEY?.trim();
-  const smsNumber = process.env.PARSPACK_SMS_NUMBER?.trim();
+  const apiKey = process.env.ApiKey?.trim();
+  const smsNumber = process.env.SMS_NUMBER?.trim();
 
   if (!apiKey) {
     throw new Error("متغیر PARSPACK_SMS_API_KEY تنظیم نشده است.");

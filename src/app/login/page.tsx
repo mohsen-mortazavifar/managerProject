@@ -39,9 +39,9 @@ export default function LoginPage() {
     <main className="auth-page" dir="rtl">
       <section className="auth-card">
         <div className="auth-brand"><span>RM</span><div><strong>Repair Master</strong><small>پنل مدیریت پلتفرم</small></div></div>
-        <div className="auth-icon"><LockKeyhole size={23} /></div>
-        <h1>ورود مدیر سامانه</h1>
-        <p className="auth-description">برای مدیریت کسب‌وکارها با حساب کاربری مدیر سیستم وارد شوید.</p>
+        {/* <div className="auth-icon"><LockKeyhole size={23} /></div> */}
+        {/* <h1>ورود مدیر سامانه</h1> */}
+        <p className="auth-description"> با حساب کاربری مدیر سیستم وارد شوید.</p>
         <form className="auth-form" onSubmit={handleSubmit}>
           <label htmlFor="email">ایمیل</label>
           <input id="email" type="email" autoComplete="username" required maxLength={255} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@example.com" />
@@ -50,8 +50,8 @@ export default function LoginPage() {
           {error && <p className="auth-error" role="alert">{error}</p>}
           <button className="auth-submit" disabled={busy} type="submit"><LogIn size={17} />{busy ? "در حال بررسی..." : "ورود به پنل"}</button>
         </form>
-        <div className="auth-security"><ShieldCheck size={16} /><span>اتصال امن با توکن دسترسی کوتاه‌مدت</span></div>
-        <p className="auth-footnote">برای ورود موفق، حساب باید در جدول Users فعال و دارای دسترسی مدیر سیستم باشد.</p>
+        {/* <div className="auth-security"><ShieldCheck size={16} /><span>اتصال امن با توکن دسترسی کوتاه‌مدت</span></div>
+        <p className="auth-footnote">برای ورود موفق، حساب باید در جدول کاربران فعال و دارای دسترسی مدیر سیستم باشد.</p> */}
       </section>
     </main>
   );

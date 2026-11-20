@@ -135,7 +135,7 @@ export default function WorkspacePage() {
           <article><span className="workspace-summary-icon"><CircleUserRound size={19} /></span><div><small>کد فضای کاری</small><strong dir="ltr">{data?.tenant?.code || "—"}</strong></div></article>
         </section>
 
-        <div className="workspace-section-heading"><div><h2>مدیریت کسب‌وکار</h2><p>ماژول‌ها به‌تدریج در همین فضای کاری اضافه می‌شوند.</p></div></div>
+        <div className="workspace-section-heading"><div><h2>مدیریت کسب‌وکار</h2><p></p></div></div>
         <section className="workspace-module-grid">
           <article className="workspace-module-card workspace-module-card-active">
             <span><Building2 size={21} /></span><div><h3>اطلاعات کسب‌وکار</h3><p>وضعیت و مشخصات فضای کاری فعلی</p></div><small>آماده</small>
@@ -159,7 +159,7 @@ export default function WorkspacePage() {
         <button type="button" className="workspace-module-card workspace-module-card-link" onClick={() => router.push("/workspace/security/password")} aria-label="تنظیم رمز عبور پشتیبان">
           <span><LockKeyhole size={21} /></span><div><h3>رمز عبور پشتیبان</h3><p>ورود جایگزین در صورت در دسترس نبودن پیامک</p></div><small>تنظیم رمز</small>
         </button>
-        <footer className="workspace-footer">این نسخه اولیه پنل مالک است؛ ماژول‌های عملیاتی هنوز به‌صورت کامل فعال نشده‌اند.</footer>
+        <footer className="workspace-footer"></footer>
       </section>
     </main>
   );

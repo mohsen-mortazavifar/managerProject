@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     const tx = new sql.Transaction(pool);
    
     await tx.begin();
-     console.log(",,,,,,,,")
+
     try {
       const found = await new sql.Request(tx)
         .input("challengeId", sql.UniqueIdentifier, input.challengeId)
