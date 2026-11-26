@@ -1,7 +1,7 @@
 /*
   Tenant migration: optional user-defined internal serial for each repair-order item.
   The value belongs to repair.RepairOrders, not the reusable repair.Devices record.
-  It is entered by the operator; no serial is generated automatically.
+  It is entered by the operator; no serial is generated or backfilled automatically.
   Duplicate non-empty values are rejected within the tenant database.
   Idempotent and safe for existing tenant databases.
 */
