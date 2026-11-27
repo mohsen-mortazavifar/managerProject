@@ -15,6 +15,56 @@ export function splitBatches(script) {
     .filter(Boolean);
 }
 
+// Mask SQL comments, string literals and quoted identifiers before validating
+// commands. This avoids treating documentation text or string values as SQL.
+function maskSqlCommentsAndLiterals(script) {
+  const chars = [...script];
+  const output = [...chars];
+  let state = "normal";
+  let blockDepth = 0;
+  const mask = (i) => {
+    if (chars[i] !== "\n" && chars[i] !== "\r") output[i] = " ";
+  };
+
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i], n = chars[i + 1];
+    if (state === "line-comment") {
+      if (c === "\n" || c === "\r") state = "normal";
+      else mask(i);
+    } else if (state === "block-comment") {
+      if (c === "/" && n === "*") {
+        mask(i); mask(i + 1); blockDepth++; i++;
+      } else if (c === "*" && n === "/") {
+        mask(i); mask(i + 1); blockDepth--; i++;
+        if (blockDepth === 0) state = "normal";
+      } else mask(i);
+    } else if (state === "single-quote") {
+      mask(i);
+      if (c === "'" && n === "'") { mask(i + 1); i++; }
+      else if (c === "'") state = "normal";
+    } else if (state === "double-quote") {
+      mask(i);
+      if (c === '"' && n === '"') { mask(i + 1); i++; }
+      else if (c === '"') state = "normal";
+    } else if (state === "bracket-identifier") {
+      mask(i);
+      if (c === "]" && n === "]") { mask(i + 1); i++; }
+      else if (c === "]") state = "normal";
+    } else if (c === "-" && n === "-") {
+      mask(i); mask(i + 1); state = "line-comment"; i++;
+    } else if (c === "/" && n === "*") {
+      mask(i); mask(i + 1); state = "block-comment"; blockDepth = 1; i++;
+    } else if (c === "'") {
+      mask(i); state = "single-quote";
+    } else if (c === '"') {
+      mask(i); state = "double-quote";
+    } else if (c === "[") {
+      mask(i); state = "bracket-identifier";
+    }
+  }
+  return output.join("");
+}
+
 export async function loadTenantMigrations() {
   const files = (await readdir(migrationsDirectory, { withFileTypes: true }))
     .filter((entry) => entry.isFile() && /^V(?:[2-9]|[1-9][0-9]+)_[A-Za-z0-9_-]+\.sql$/i.test(entry.name))
@@ -35,7 +85,8 @@ export async function loadTenantMigrations() {
     expectedNumber++;
     const version = file.replace(/\.sql$/i, "");
     const content = await readFile(resolve(migrationsDirectory, file), "utf8");
-    if (/^\s*USE\s+|\bCREATE\s+DATABASE\b|\bALTER\s+DATABASE\b|\bBEGIN\s+TRAN(?:SACTION)?\b|\bCOMMIT\s+TRAN(?:SACTION)?\b|\bROLLBACK\s+TRAN(?:SACTION)?\b/im.test(content)) {
+    const executableSql = maskSqlCommentsAndLiterals(content);
+    if (/^\\s*USE\\s+|\\bCREATE\\s+DATABASE\\b|\\bALTER\\s+DATABASE\\b|\\bBEGIN\\s+TRAN(?:SACTION)?\\b|\\bCOMMIT\\s+TRAN(?:SACTION)?\\b|\\bROLLBACK\\s+TRAN(?:SACTION)?\\b/im.test(executableSql)) {
       throw new Error(`MIGRATION_CONTAINS_FORBIDDEN_TRANSACTION_OR_DATABASE_COMMAND: ${file}`);
     }
     migrations.push({
