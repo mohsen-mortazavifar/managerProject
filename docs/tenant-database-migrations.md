@@ -130,5 +130,6 @@ run against tenant databases.
   before rollout and inspect failures; never edit an already-recorded migration.
 - V24 intentionally aborts if both old and new schema copies exist. Reconcile those
   tables and data manually before retrying rather than allowing a silent overwrite.
+- V18 checks for existing `ReturnedUnderWarranty` orders before replacing the retired status constraint. If any exist, the migration stops; review and reconcile those orders explicitly before retrying.
 - V25 invalidates the previous fixed-delay schedules for the RepairCompleted rule.
   This is intentional because the new reminder interval is selected per repair order.
