@@ -39,9 +39,11 @@ IF OBJECT_ID(N'dbo.ReminderEventRules', N'U') IS NOT NULL
 IF OBJECT_ID(N'dbo.ReminderEventInbox', N'U') IS NOT NULL
     EXEC(N'ALTER SCHEMA notification TRANSFER dbo.ReminderEventInbox');
 
-IF OBJECT_ID(N'notification.OutboxMessages', N'U') IS NOT NULL
-   AND OBJECT_ID(N'notification.ReminderSchedules', N'U') IS NOT NULL
-   AND OBJECT_ID(N'notification.ReminderEventRules', N'U') IS NOT NULL
-   AND OBJECT_ID(N'notification.ReminderEventInbox', N'U') IS NOT NULL
-    PRINT 'Tenant notification schema migration completed.';
+IF OBJECT_ID(N'notification.OutboxMessages', N'U') IS NULL
+   OR OBJECT_ID(N'notification.ReminderSchedules', N'U') IS NULL
+   OR OBJECT_ID(N'notification.ReminderEventRules', N'U') IS NULL
+   OR OBJECT_ID(N'notification.ReminderEventInbox', N'U') IS NULL
+    THROW 52401, 'Required tenant notification tables are missing after schema transfer.', 1;
+
+PRINT 'Tenant notification schema migration completed.';
 GO
