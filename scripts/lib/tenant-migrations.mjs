@@ -86,7 +86,7 @@ export async function loadTenantMigrations() {
     const version = file.replace(/\.sql$/i, "");
     const content = await readFile(resolve(migrationsDirectory, file), "utf8");
     const executableSql = maskSqlCommentsAndLiterals(content);
-    if (/^\\s*USE\\s+|\\bCREATE\\s+DATABASE\\b|\\bALTER\\s+DATABASE\\b|\\bBEGIN\\s+TRAN(?:SACTION)?\\b|\\bCOMMIT\\s+TRAN(?:SACTION)?\\b|\\bROLLBACK\\s+TRAN(?:SACTION)?\\b/im.test(executableSql)) {
+    if (/^\s*USE\s+|\bCREATE\s+DATABASE\b|\bALTER\s+DATABASE\b|\bBEGIN\s+TRAN(?:SACTION)?\b|\bCOMMIT\s+TRAN(?:SACTION)?\b|\bROLLBACK\s+TRAN(?:SACTION)?\b/im.test(executableSql)) {
       throw new Error(`MIGRATION_CONTAINS_FORBIDDEN_TRANSACTION_OR_DATABASE_COMMAND: ${file}`);
     }
     migrations.push({
