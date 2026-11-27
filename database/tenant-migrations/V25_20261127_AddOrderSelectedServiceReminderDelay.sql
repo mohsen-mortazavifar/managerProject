@@ -57,10 +57,17 @@ SET IsEnabled = 0,
     UpdatedAt = SYSUTCDATETIME()
 FROM notification.ReminderSchedules AS schedule
 WHERE schedule.IsEnabled = 1
-  AND JSON_VALUE(schedule.RuleJson, '$.ruleId') IN (
-      SELECT CONVERT(NVARCHAR(20), ReminderEventRuleId)
-      FROM notification.ReminderEventRules
-      WHERE EventType = N'RepairCompleted'
-        AND ReminderType = N'RepairCompletedFollowUp'
-        AND SourceEntity = N'RepairOrder'
+  AND (
+      JSON_VALUE(schedule.RuleJson, '$.ruleId') IN (
+          SELECT CONVERT(NVARCHAR(20), ReminderEventRuleId)
+          FROM notification.ReminderEventRules
+          WHERE EventType = N'RepairCompleted'
+            AND ReminderType = N'RepairCompletedFollowUp'
+            AND SourceEntity = N'RepairOrder'
+      )
+      OR (
+          JSON_VALUE(schedule.RuleJson, '$.ruleId') IS NULL
+          AND schedule.ReminderType = N'RepairCompletedFollowUp'
+          AND schedule.SourceEntity = N'RepairOrder'
+      )
   );
