@@ -108,6 +108,14 @@ GO
 
 
 /* Remove the retired order status from any tenant CHECK constraint and prevent it from being stored again. */
+IF EXISTS (
+  SELECT 1
+  FROM repair.RepairOrders
+  WHERE CurrentStatus = N'ReturnedUnderWarranty'
+)
+  THROW 51801, 'Legacy ReturnedUnderWarranty orders exist. Reconcile their status before applying the warranty status constraint.', 1;
+GO
+
 DECLARE @LegacyStatusConstraint sysname;
 DECLARE legacy_status_constraints CURSOR LOCAL FAST_FORWARD FOR
   SELECT name
