@@ -82,3 +82,53 @@ expose this worker as a public API or run it inside a web request.
   initial schema is complete; such databases need manual review.
 - The provisioning worker applies V1 and all V2+ migrations before marking a tenant
   database active or changing the tenant status to Active.
+
+## Current canonical tenant migration sequence
+
+The currently released baseline is V1 through V14. This branch already contains
+V15 (repair-order internal serial), which is the next migration after the server's
+currently reported V14. The additional migrations in this branch continue from V16;
+do not renumber V15 or apply V16 before it.
+
+| Version | File | Purpose |
+|---|---|---|
+| V15 | `V15_20261126_AddRepairOrderInternalSerial.sql` | Optional unique internal serial on each repair order |
+| V16 | `V16_20261126_AddDeviceStoreSerial.sql` | Store serial on reusable device records |
+| V17 | `V17_20261122_AddReceiptTrackingLinkPreference.sql` | Per-receipt opt-in for public tracking link SMS |
+| V18 | `V18_20261123_AddRepairWarranty.sql` | Warranty policies, issued warranties, claims and permissions |
+| V19 | `V19_20261123_ExtendRepairWarrantyOperations.sql` | Revocation audit, claim-line decisions and WarrantyIssued template |
+| V20 | `V20_20261125_AddOrderServiceReminderPreferences.sql` | Per-order opt-in and selected reminder interval |
+| V21 | `V21_20261127_AddTenantReminderEventRules.sql` | Tenant-owned reminder event rules and event inbox schema |
+| V22 | `V22_20261127_SeedRepairCompletedReminderRule.sql` | Initial RepairCompleted rule matching the Repair event payload |
+| V23 | `V23_20261127_AddReminderEventCancellationLimits.sql` | Cancellation event mapping and occurrence limit |
+| V24 | `V24_20261127_MoveReminderTablesToNotification.sql` | Move legacy tenant outbox/schedule/inbox tables into notification |
+| V25 | `V25_20261127_AddOrderSelectedServiceReminderDelay.sql` | One-time 3/6/12-month delay selected on each repair order |
+| V26 | `V26_20261127_AddReminderOccurrences.sql` | Materialized reminder occurrences and scheduler counter |
+| V27 | `V27_20261127_AddSmsDeliveryLogs.sql` | Tenant-local SMS delivery history and sync keys |
+| V28 | `V28_20261127_EnforceFiniteReminderRecurrence.sql` | Finite recurrence cap for existing and new schedules |
+| V29 | `V29_20261127_UpdateServiceReminderMessageTemplate.sql` | Current RepairCompleted reminder text and payload placeholders |
+| V30 | `V30_20261127_AddRepairSmsTemplatesAndBranchContacts.sql` | Delivered template and branch contact placeholders in Repair SMS templates |
+
+The migration worker discovers V2+ files by their numeric prefix and requires a
+contiguous sequence. It will stop before changing a tenant if a version is missing.
+Keep this folder as the canonical source for all new tenant schema changes. Do not
+copy new tenant DDL into Repair's ad-hoc `database/scripts` folder or TaskFlow's
+tenant scripts as a second independently executable migration chain.
+
+The TaskFlow reminder migrations in V21-V29 are deliberately incorporated here
+because the tables they create are in the Repair tenant operational database.
+The TaskFlow central database migrations remain a separate chain and must not be
+run against tenant databases.
+
+### Deployment notes for this branch
+
+- The production list supplied for this review ends at V14. V15 is present in this
+  branch but is not in that supplied production list; verify the tenant ledger and
+  master `SchemaVersion` before rollout.
+- New tenant provisioning applies V1 and then V2-V30 automatically using this folder.
+- Existing tenants are advanced by the tenant migration worker. Back up tenant DBs
+  before rollout and inspect failures; never edit an already-recorded migration.
+- V24 intentionally aborts if both old and new schema copies exist. Reconcile those
+  tables and data manually before retrying rather than allowing a silent overwrite.
+- V25 invalidates the previous fixed-delay schedules for the RepairCompleted rule.
+  This is intentional because the new reminder interval is selected per repair order.
