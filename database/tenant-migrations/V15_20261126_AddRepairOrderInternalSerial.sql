@@ -12,7 +12,7 @@ IF OBJECT_ID(N'repair.RepairOrders', N'U') IS NULL
 
 IF COL_LENGTH(N'repair.RepairOrders', N'InternalSerialNumber') IS NULL
   ALTER TABLE repair.RepairOrders ADD InternalSerialNumber NVARCHAR(100) NULL;
-
+GO
 IF NOT EXISTS (
   SELECT 1 FROM sys.indexes
   WHERE object_id = OBJECT_ID(N'repair.RepairOrders')
@@ -21,3 +21,4 @@ IF NOT EXISTS (
   CREATE UNIQUE INDEX UX_RepairOrders_InternalSerialNumber
     ON repair.RepairOrders(InternalSerialNumber)
     WHERE InternalSerialNumber IS NOT NULL AND DeletedAt IS NULL;
+    GO
