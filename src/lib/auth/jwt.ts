@@ -2,7 +2,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 const JWT_ISSUER = "repair-master";
 const JWT_AUDIENCE = "repair-master-api";
-export const JWT_TTL_SECONDS = 15 * 60;
+export const JWT_TTL_SECONDS = 8 * 60 * 60;
 
 export type JwtUser = {
   userId: string;
