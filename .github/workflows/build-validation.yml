@@ -1,0 +1,28 @@
+name: Build validation
+
+on:
+  push:
+    branches:
+      - feature/subscription-orders-access-control
+  pull_request:
+    branches:
+      - feature/subscription-orders-access-control
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build -- --webpack

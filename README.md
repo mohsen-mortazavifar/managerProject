@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Repair Master — پنل مدیریت پلتفرم
 
-## Getting Started
+پنل مدیریت SaaS مبتنی بر Next.js، TypeScript و SQL Server.
 
-First, run the development server:
+## راه‌اندازی محلی
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1. وابستگی‌ها را نصب کنید:
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+   ```bash
+   npm ci
+   ```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+2. فایل `.env.example` را به `.env.local` کپی کنید و مقادیر اتصال SQL Server را با محیط خودتان جایگزین کنید. مقدار `JWT_SECRET` باید یک راز تصادفی واقعی با حداقل ۳۲ بایت باشد؛ از مقدار نمونه استفاده نکنید. می‌توانید آن را با `openssl rand -base64 48` تولید کنید.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+3. پیش از استفاده از API ورود، اسکریپت `docs/create-auth-login-attempts.sql` را پس از بررسی روی دیتابیس اجرا کنید. این اسکریپت جدول محدودسازی تلاش‌های ورود را ایجاد می‌کند.
 
-## Learn More
+4. برای ابطال توکن هنگام خروج، اسکریپت `docs/create-revoked-access-tokens.sql` را نیز پس از بررسی اجرا کنید. برنامه به‌صورت خودکار دیتابیس را تغییر نمی‌دهد.
 
-To learn more about Next.js, take a look at the following resources:
+5. اگر جدول `Users` خالی است، یک مدیر اولیه بسازید. در ترمینال پروژه اجرا کنید:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+   ```bash
+   npm run bootstrap:admin
+   ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+   ایمیل، نام و رمز عبور را در ترمینال وارد کنید. رمز عبور هنگام تایپ نمایش داده نمی‌شود و حداقل ۱۲ کاراکتر لازم دارد. این فرمان از اتصال دیتابیس `.env.local` استفاده می‌کند و اگر ایمیل از قبل موجود باشد، کاربر تکراری ایجاد نمی‌کند.
 
-## Deploy on Vercel
+6. برنامه را اجرا کنید:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+   ```bash
+   npm run dev
+   ```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+7. صفحه داشبورد: [http://localhost:3000](http://localhost:3000)
+
+## مسیرهای پیاده‌سازی‌شده
+
+- `/login` — ورود با ایمیل و رمز عبور؛ حساب باید فعال و دارای `IsSystemAdmin = 1` باشد تا بخش مدیریت کسب‌وکارها را ببیند.
+- `/tenants` — فهرست، جستجو و ثبت کسب‌وکارها از طریق SQL Server.
+- `/health` — بررسی اتصال برنامه به دیتابیس مرکزی.
+- `GET /api/tenants` و `POST /api/tenants` — فهرست و ثبت کسب‌وکار؛ فقط مدیر سیستم.
+- `GET /api/tenants/:tenantId` و `PATCH /api/tenants/:tenantId` — مشاهده و ویرایش اطلاعات کسب‌وکار؛ فقط مدیر سیستم.
+- `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout` — APIهای احراز هویت JWT.
+
+راهنمای جزئیات JWT و محدودسازی ورود در `docs/authentication.md` قرار دارد.
+
+## نکات مهم
+
+- این نسخه هنوز شامل مدیریت کاربران و نقش‌های Tenant، پلن‌ها و پرداخت، provisioning خودکار یا گزارش کامل audit نیست.
+- توکن ورود در `sessionStorage` نگهداری می‌شود و پس از بستن زبانه مرورگر حذف می‌شود. خروج امن توکن را در سرور باطل می‌کند، اما اگر درخواست خروج به سرور نرسد، توکن تا زمان انقضا معتبر می‌ماند. برای استقرار تولیدی، معماری ذخیره‌سازی توکن و گزینه کوکی HttpOnly با محافظت CSRF را ارزیابی کنید.
+- build و تست یکپارچه باید در محیط توسعه شما با نسخه Node.js، متغیرهای محیطی و SQL Server واقعی اجرا شوند.
